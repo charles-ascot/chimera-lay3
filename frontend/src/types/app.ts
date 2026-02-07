@@ -43,7 +43,7 @@ export interface DailyStats {
   roi?: number
 }
 
-export type EngineMode = 'STOPPED' | 'STAGING' | 'LIVE'
+export type EngineMode = 'STOPPED' | 'STAGING' | 'LIVE' | 'PAUSED'
 
 export interface AutoBettingStatus {
   is_running: boolean

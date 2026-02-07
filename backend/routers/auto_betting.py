@@ -83,6 +83,32 @@ async def go_staging():
     return {"status": "STAGING" if success else "FAILED", "mode": _engine.mode}
 
 
+@router.post("/pause")
+async def pause_engine():
+    """Pause the engine — loop stays alive but stops scanning."""
+    if _engine is None:
+        raise HTTPException(status_code=500, detail="Engine not initialized")
+
+    if not _engine.is_running:
+        raise HTTPException(status_code=400, detail="Engine is not running. Start it first.")
+
+    success = await _engine.pause()
+    return {"status": "PAUSED" if success else "FAILED", "mode": _engine.mode}
+
+
+@router.post("/resume")
+async def resume_engine():
+    """Resume from PAUSED back to the previous mode."""
+    if _engine is None:
+        raise HTTPException(status_code=500, detail="Engine not initialized")
+
+    if not _engine.is_running:
+        raise HTTPException(status_code=400, detail="Engine is not running. Start it first.")
+
+    success = await _engine.resume()
+    return {"status": "RESUMED" if success else "FAILED", "mode": _engine.mode}
+
+
 @router.get("/status")
 async def get_status():
     """Get auto-betting engine status and session stats."""

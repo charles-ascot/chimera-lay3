@@ -23,6 +23,8 @@ interface AutoState {
   stopEngine: () => Promise<boolean>
   goLive: () => Promise<boolean>
   goStaging: () => Promise<boolean>
+  pauseEngine: () => Promise<boolean>
+  resumeEngine: () => Promise<boolean>
   togglePlugin: (pluginId: string, enabled: boolean) => Promise<void>
   updateSettings: (settings: Record<string, any>) => Promise<void>
   addActivity: (activity: any) => void
@@ -112,6 +114,32 @@ export const useAutoStore = create<AutoState>((set, get) => ({
       return true
     } catch (err: any) {
       set({ loading: false, error: err.response?.data?.detail || 'Failed to switch to staging' })
+      return false
+    }
+  },
+
+  pauseEngine: async () => {
+    set({ loading: true })
+    try {
+      await autoApi.pause()
+      await get().fetchStatus()
+      set({ loading: false })
+      return true
+    } catch (err: any) {
+      set({ loading: false, error: err.response?.data?.detail || 'Failed to pause' })
+      return false
+    }
+  },
+
+  resumeEngine: async () => {
+    set({ loading: true })
+    try {
+      await autoApi.resume()
+      await get().fetchStatus()
+      set({ loading: false })
+      return true
+    } catch (err: any) {
+      set({ loading: false, error: err.response?.data?.detail || 'Failed to resume' })
       return false
     }
   },

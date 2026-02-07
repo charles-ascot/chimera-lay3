@@ -25,7 +25,7 @@ export default function AutoBettingPage() {
   const {
     status, plugins, autoBets, activityLog, loading,
     fetchStatus, fetchPlugins, fetchAutoBets,
-    startEngine, stopEngine, goLive, goStaging, togglePlugin,
+    startEngine, stopEngine, goLive, goStaging, pauseEngine, resumeEngine, togglePlugin,
   } = useAutoStore()
   const { addToast } = useToastStore()
   const [showLiveConfirm, setShowLiveConfirm] = useState(false)
@@ -87,6 +87,16 @@ export default function AutoBettingPage() {
     )
   }
 
+  const handlePause = async () => {
+    const ok = await pauseEngine()
+    addToast(ok ? 'Engine paused' : 'Failed to pause', ok ? 'info' : 'error')
+  }
+
+  const handleResume = async () => {
+    const ok = await resumeEngine()
+    addToast(ok ? 'Engine resumed' : 'Failed to resume', ok ? 'success' : 'error')
+  }
+
   return (
     <div className="max-w-7xl mx-auto space-y-6 animate-fade-in">
       {/* Engine Control Bar */}
@@ -100,6 +110,7 @@ export default function AutoBettingPage() {
             <p className="text-sm text-chimera-muted mt-1">
               {mode === 'STAGING' && `Simulating bets | ${status?.bets_placed_today || 0} evaluated today`}
               {mode === 'LIVE' && `LIVE — Real bets active | ${status?.bets_placed_today || 0} bets today`}
+              {mode === 'PAUSED' && `Paused | ${status?.bets_placed_today || 0} bets today`}
               {mode === 'STOPPED' && 'Click Stage to begin simulated evaluation'}
             </p>
           </div>
@@ -128,8 +139,30 @@ export default function AutoBettingPage() {
                   Skip staging
                 </label>
               </>
+            ) : mode === 'PAUSED' ? (
+              /* Paused — show Resume + Stop */
+              <>
+                <button
+                  onClick={handleResume}
+                  disabled={loading}
+                  className="px-6 py-3 rounded-xl font-semibold transition-all
+                    bg-chimera-success/10 border-2 border-chimera-success/30 text-chimera-success
+                    hover:bg-chimera-success/20"
+                >
+                  {loading ? <LoadingSpinner size="sm" /> : 'RESUME'}
+                </button>
+                <button
+                  onClick={handleStop}
+                  disabled={loading}
+                  className="px-5 py-3 rounded-xl font-medium transition-all
+                    bg-chimera-bg-card border border-chimera-border text-chimera-muted
+                    hover:text-chimera-error hover:border-chimera-error/30"
+                >
+                  STOP
+                </button>
+              </>
             ) : mode === 'STAGING' ? (
-              /* Staging — show Go Live + Stop */
+              /* Staging — show Go Live + Pause + Stop */
               <>
                 <button
                   onClick={handleGoLive}
@@ -139,6 +172,15 @@ export default function AutoBettingPage() {
                     hover:bg-chimera-success/20 glow-success"
                 >
                   {loading ? <LoadingSpinner size="sm" /> : 'GO LIVE'}
+                </button>
+                <button
+                  onClick={handlePause}
+                  disabled={loading}
+                  className="px-5 py-3 rounded-xl font-medium transition-all
+                    bg-chimera-warning/10 border border-chimera-warning/30 text-chimera-warning
+                    hover:bg-chimera-warning/20"
+                >
+                  PAUSE
                 </button>
                 <button
                   onClick={handleStop}
@@ -151,7 +193,7 @@ export default function AutoBettingPage() {
                 </button>
               </>
             ) : (
-              /* Live — show Go Staging + Stop */
+              /* Live — show Go Staging + Pause + Stop */
               <>
                 <button
                   onClick={handleGoStaging}
@@ -161,6 +203,15 @@ export default function AutoBettingPage() {
                     hover:bg-chimera-cyan/20"
                 >
                   STAGING
+                </button>
+                <button
+                  onClick={handlePause}
+                  disabled={loading}
+                  className="px-5 py-3 rounded-xl font-medium transition-all
+                    bg-chimera-warning/10 border border-chimera-warning/30 text-chimera-warning
+                    hover:bg-chimera-warning/20"
+                >
+                  PAUSE
                 </button>
                 <button
                   onClick={handleStop}
@@ -398,6 +449,14 @@ function ModeBadge({ mode }: { mode: string }) {
       <span className="badge bg-chimera-cyan/10 text-chimera-cyan border-chimera-cyan/20 flex items-center gap-1.5">
         <span className="w-2 h-2 rounded-full bg-chimera-cyan animate-pulse" />
         STAGING
+      </span>
+    )
+  }
+  if (mode === 'PAUSED') {
+    return (
+      <span className="badge bg-chimera-warning/10 text-chimera-warning border-chimera-warning/20 flex items-center gap-1.5">
+        <span className="w-2 h-2 rounded-full bg-chimera-warning" />
+        PAUSED
       </span>
     )
   }

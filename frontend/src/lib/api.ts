@@ -103,6 +103,10 @@ export const autoApi = {
 
   goStaging: () => api.post('/api/auto/go-staging'),
 
+  pause: () => api.post('/api/auto/pause'),
+
+  resume: () => api.post('/api/auto/resume'),
+
   getStatus: () => api.get('/api/auto/status'),
 
   getBets: (params?: { limit?: number; offset?: number; source?: string }) =>

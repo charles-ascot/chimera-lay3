@@ -35,6 +35,7 @@ logger = logging.getLogger(__name__)
 MODE_STOPPED = "STOPPED"
 MODE_STAGING = "STAGING"
 MODE_LIVE = "LIVE"
+MODE_PAUSED = "PAUSED"
 
 
 class AutoBettingEngine:
@@ -46,6 +47,7 @@ class AutoBettingEngine:
     - STAGING: Full evaluation pipeline runs, bets recorded as STAGED
               (no real money). Everything visible in UI.
     - LIVE:   Real bets placed via Betfair API.
+    - PAUSED: Engine loop still alive but skips scanning. Resume instantly.
 
     Flow:
     1. Periodically scan the price cache for eligible markets
@@ -68,6 +70,7 @@ class AutoBettingEngine:
             "max_concurrent_bets": config.DEFAULT_MAX_CONCURRENT_BETS,
             "max_bets_per_race": config.DEFAULT_MAX_BETS_PER_RACE,
         }
+        self._pre_pause_mode: str = MODE_STAGING  # mode to resume to after pause
         self._scan_interval = 2.0  # seconds between scans
         self._processed_markets: set = set()
         self._stats = {
@@ -94,6 +97,10 @@ class AutoBettingEngine:
     @property
     def is_live(self) -> bool:
         return self._mode == MODE_LIVE
+
+    @property
+    def is_paused(self) -> bool:
+        return self._mode == MODE_PAUSED
 
     @property
     def stats(self) -> dict:
@@ -216,6 +223,56 @@ class AutoBettingEngine:
         })
         return True
 
+    async def pause(self):
+        """Pause the engine — loop stays alive but skips scanning."""
+        if not self._running:
+            logger.warning("Engine not running — cannot pause")
+            return False
+
+        if self._mode == MODE_PAUSED:
+            logger.info("Already paused")
+            return True
+
+        self._pre_pause_mode = self._mode  # remember so we can resume to same mode
+        self._mode = MODE_PAUSED
+        logger.info(f"Engine PAUSED (was {self._pre_pause_mode})")
+        await broadcast_engine_status({
+            "is_running": True,
+            "mode": MODE_PAUSED,
+            "message": "Engine paused",
+        })
+        await broadcast_engine_activity({
+            "type": "mode_change",
+            "mode": MODE_PAUSED,
+            "message": "Engine paused",
+        })
+        return True
+
+    async def resume(self):
+        """Resume from PAUSED back to whatever mode was active before."""
+        if not self._running:
+            logger.warning("Engine not running — cannot resume")
+            return False
+
+        if self._mode != MODE_PAUSED:
+            logger.info(f"Not paused (mode={self._mode}), nothing to resume")
+            return True
+
+        resume_to = getattr(self, "_pre_pause_mode", MODE_STAGING)
+        self._mode = resume_to
+        logger.info(f"Engine RESUMED to {resume_to} mode")
+        await broadcast_engine_status({
+            "is_running": True,
+            "mode": resume_to,
+            "message": f"Engine resumed in {resume_to} mode",
+        })
+        await broadcast_engine_activity({
+            "type": "mode_change",
+            "mode": resume_to,
+            "message": f"Resumed — {resume_to} mode",
+        })
+        return True
+
     async def reload_plugins(self):
         """Reload plugins (called when plugin config changes)."""
         await plugin_loader.reload()
@@ -231,6 +288,11 @@ class AutoBettingEngine:
 
         while self._running:
             try:
+                if self._mode == MODE_PAUSED:
+                    # Paused — skip scanning, just sleep
+                    await asyncio.sleep(self._scan_interval)
+                    continue
+
                 await self._scan_markets()
                 self._stats["scans"] += 1
                 self._stats["last_scan"] = datetime.now(timezone.utc).isoformat()
