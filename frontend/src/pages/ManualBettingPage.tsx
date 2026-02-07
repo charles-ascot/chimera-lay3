@@ -13,7 +13,7 @@ import StatusBadge from '../components/shared/StatusBadge'
 import type { Market, Runner } from '../types/betfair'
 
 export default function ManualBettingPage() {
-  const { markets, selectedMarketId, livePrices, marketStatuses, fetchMarkets, selectMarket, loading } = useMarketsStore()
+  const { markets, selectedMarketId, livePrices, marketStatuses, fetchMarkets, selectMarket, fetchMarketBook, loading } = useMarketsStore()
   const selectedMarket = useMarketsStore((s) => s.getSelectedMarket())
 
   useEffect(() => {
@@ -21,6 +21,22 @@ export default function ManualBettingPage() {
     const interval = setInterval(fetchMarkets, 60000) // Refresh catalogue every 60s
     return () => clearInterval(interval)
   }, [fetchMarkets])
+
+  // REST API fallback: poll prices for the selected market
+  // This ensures prices show even when the Stream API is down
+  useEffect(() => {
+    if (!selectedMarketId) return
+
+    // Fetch immediately when market is selected
+    fetchMarketBook(selectedMarketId)
+
+    // Poll every 3 seconds as fallback (stream provides real-time when working)
+    const interval = setInterval(() => {
+      fetchMarketBook(selectedMarketId)
+    }, 3000)
+
+    return () => clearInterval(interval)
+  }, [selectedMarketId, fetchMarketBook])
 
   const grouped = groupByVenue(markets)
 

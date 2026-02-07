@@ -6,6 +6,7 @@
 import { NavLink } from 'react-router-dom'
 import { useAuthStore } from '../../store/auth'
 import { useAutoStore } from '../../store/auto'
+import chimeraWS from '../../lib/ws'
 
 const NAV_ITEMS = [
   { path: '/account', label: 'Account', icon: WalletIcon },
@@ -51,12 +52,18 @@ export default function Navbar() {
           ))}
         </div>
 
-        <button
-          onClick={logout}
-          className="text-sm text-chimera-muted hover:text-chimera-error transition-colors"
-        >
-          Logout
-        </button>
+        <div className="flex items-center gap-3">
+          <span
+            className={`w-2 h-2 rounded-full ${chimeraWS.isConnected ? 'bg-chimera-success' : 'bg-chimera-error animate-pulse'}`}
+            title={chimeraWS.isConnected ? 'Stream connected' : 'Stream disconnected'}
+          />
+          <button
+            onClick={logout}
+            className="text-sm text-chimera-muted hover:text-chimera-error transition-colors"
+          >
+            Logout
+          </button>
+        </div>
       </nav>
 
       {/* Mobile Bottom Nav */}

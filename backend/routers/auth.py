@@ -117,9 +117,21 @@ async def restore_session():
                 expires_at=result["expires_at"],
             )
             betfair_client.session_token = result["token"]
+
+        # Ensure stream is connected (it may have failed at boot or disconnected)
+        active_token = betfair_client.session_token
+        if not stream_manager.is_connected and active_token:
+            try:
+                logger.info("Stream not connected — starting on session restore")
+                await stream_manager.start(active_token)
+                logger.info("Stream started after session restore")
+            except Exception as e:
+                logger.warning(f"Stream start failed on restore: {e}")
+
         return {
             "authenticated": True,
             "expires_at": result.get("expires_at", session["expires_at"]),
+            "stream_connected": stream_manager.is_connected,
         }
     except BetfairAPIError:
         await db.clear_session()

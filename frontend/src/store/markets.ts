@@ -1,6 +1,7 @@
 /**
  * CHIMERA v2 Markets Store (Zustand)
  * Market catalogue + live price updates from WebSocket
+ * Falls back to REST API polling when stream data is unavailable
  */
 
 import { create } from 'zustand'
@@ -20,6 +21,7 @@ interface MarketsState {
   updatePrices: (marketId: string, runners: any[]) => void
   updateMarketStatus: (marketId: string, status: string, inPlay: boolean) => void
   getSelectedMarket: () => Market | null
+  fetchMarketBook: (marketId: string) => Promise<void>
 }
 
 export const useMarketsStore = create<MarketsState>((set, get) => ({
@@ -76,5 +78,36 @@ export const useMarketsStore = create<MarketsState>((set, get) => ({
     const { markets, selectedMarketId } = get()
     if (!selectedMarketId) return null
     return markets.find((m) => m.marketId === selectedMarketId) || null
+  },
+
+  fetchMarketBook: async (marketId) => {
+    try {
+      const { data } = await marketsApi.getSingleBook(marketId)
+      if (!data?.runners) return
+
+      // Convert REST API format to stream format for consistency
+      const runners = data.runners.map((r: any) => {
+        const ex = r.ex || {}
+        // Convert {price, size}[] to [[price, size], ...] format
+        const atb = (ex.availableToBack || []).map((ps: any) => [ps.price, ps.size])
+        const atl = (ex.availableToLay || []).map((ps: any) => [ps.price, ps.size])
+        return {
+          selectionId: r.selectionId,
+          atb,
+          atl,
+          ltp: r.lastPriceTraded ?? null,
+          tv: r.totalMatched || 0,
+        }
+      })
+
+      get().updatePrices(marketId, runners)
+
+      // Also update market status
+      if (data.status) {
+        get().updateMarketStatus(marketId, data.status, data.inplay || false)
+      }
+    } catch {
+      // Silently fail — stream is the primary source
+    }
   },
 }))
