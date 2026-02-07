@@ -59,7 +59,7 @@ class Config:
         "http://localhost:3000",
         "https://*.pages.dev",
         "https://chimera-lay.pages.dev",
-        "https://lay2.thync.online",
+        "https://lay3.thync.online",
         "https://*.thync.online",
     ])
 
