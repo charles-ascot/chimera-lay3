@@ -288,13 +288,25 @@ async def get_bets_for_market(market_id: str) -> list[dict]:
         return [dict(r) for r in rows]
 
 
-async def has_bet_on_market(market_id: str) -> bool:
-    """Check if we already have a bet on this market (for duplicate prevention)."""
+async def has_bet_on_market(market_id: str, exclude_staged: bool = False) -> bool:
+    """Check if we already have a bet on this market (for duplicate prevention).
+
+    Args:
+        market_id: The market to check
+        exclude_staged: If True, ignore STAGED bets (used when in LIVE mode
+                       so staged bets don't block real bets)
+    """
     async with aiosqlite.connect(DB_PATH) as db:
-        cursor = await db.execute(
-            "SELECT COUNT(*) FROM bets WHERE market_id = ? AND status != 'CANCELLED'",
-            (market_id,)
-        )
+        if exclude_staged:
+            cursor = await db.execute(
+                "SELECT COUNT(*) FROM bets WHERE market_id = ? AND status != 'CANCELLED' AND source != 'STAGED'",
+                (market_id,)
+            )
+        else:
+            cursor = await db.execute(
+                "SELECT COUNT(*) FROM bets WHERE market_id = ? AND status != 'CANCELLED'",
+                (market_id,)
+            )
         count = (await cursor.fetchone())[0]
         return count > 0
 

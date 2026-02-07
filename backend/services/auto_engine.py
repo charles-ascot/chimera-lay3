@@ -127,8 +127,12 @@ class AutoBettingEngine:
         if session.get("settings"):
             self._settings.update(session["settings"])
 
-        # Load processed markets
-        self._processed_markets = set(session.get("processed_markets", []))
+        # Load processed markets (clear if starting in LIVE mode —
+        # we want a fresh evaluation, not leftover staging state)
+        if mode == MODE_LIVE:
+            self._processed_markets = set()
+        else:
+            self._processed_markets = set(session.get("processed_markets", []))
 
         # Reset daily if needed
         await db.reset_auto_session_daily()
@@ -185,7 +189,11 @@ class AutoBettingEngine:
         })
 
     async def go_live(self):
-        """Switch from STAGING to LIVE mode without restarting."""
+        """Switch from STAGING to LIVE mode without restarting.
+
+        Clears processed_markets so the engine re-evaluates all markets
+        for real bets — staged bets won't block live ones.
+        """
         if not self._running:
             logger.warning("Engine not running — cannot go live")
             return False
@@ -193,6 +201,11 @@ class AutoBettingEngine:
         if self._mode == MODE_LIVE:
             logger.info("Already in LIVE mode")
             return True
+
+        # Clear processed markets so engine re-scans everything for real bets
+        prev_count = len(self._processed_markets)
+        self._processed_markets.clear()
+        logger.info(f"Cleared {prev_count} processed markets for live re-evaluation")
 
         self._mode = MODE_LIVE
         logger.info("Engine switched to LIVE mode — real bets will be placed")
@@ -333,7 +346,13 @@ class AutoBettingEngine:
                 return
 
         # Get today's bets and stats
-        today_bets = await db.get_today_bets()
+        # In LIVE mode, exclude STAGED bets so they don't count towards
+        # per-race limits or concurrent bet caps
+        all_today_bets = await db.get_today_bets()
+        if self._mode == MODE_LIVE:
+            today_bets = [b for b in all_today_bets if b.get("source") != "STAGED"]
+        else:
+            today_bets = all_today_bets
         today_stats = await db.get_daily_stats()
         daily_pnl = today_stats.get("profit_loss", 0)
         daily_exposure = today_stats.get("exposure", 0)
@@ -364,7 +383,11 @@ class AutoBettingEngine:
                 continue
 
             # Check duplicate — already bet on this market?
-            has_bet = await db.has_bet_on_market(market_id)
+            # In LIVE mode, ignore STAGED bets so we can place real ones
+            has_bet = await db.has_bet_on_market(
+                market_id,
+                exclude_staged=(self._mode == MODE_LIVE),
+            )
             if has_bet:
                 self._processed_markets.add(market_id)
                 continue
@@ -451,8 +474,12 @@ class AutoBettingEngine:
                             self._processed_markets.add(market_id)
                             self._stats["bets_staged"] += 1
 
-                        # Refresh daily stats
-                        today_bets = await db.get_today_bets()
+                        # Refresh daily stats (exclude staged in LIVE mode)
+                        all_today_bets = await db.get_today_bets()
+                        if self._mode == MODE_LIVE:
+                            today_bets = [b for b in all_today_bets if b.get("source") != "STAGED"]
+                        else:
+                            today_bets = all_today_bets
                         today_stats = await db.get_daily_stats()
                         daily_pnl = today_stats.get("profit_loss", 0)
                         daily_exposure = today_stats.get("exposure", 0)
