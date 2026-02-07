@@ -73,6 +73,15 @@ class AutoBettingEngine:
         self._pre_pause_mode: str = MODE_STAGING  # mode to resume to after pause
         self._scan_interval = 2.0  # seconds between scans
         self._processed_markets: set = set()
+
+        # Runner name + market info caches
+        # (Stream API doesn't include runner names in marketDefinition,
+        #  so we fetch them once from REST catalogue and cache them)
+        self._runner_names: Dict[str, Dict[int, str]] = {}   # market_id → {sel_id → name}
+        self._market_meta: Dict[str, Dict[str, Any]] = {}    # market_id → {venue, name, startTime}
+        self._catalogue_fetched = False  # True once we've fetched catalogue this session
+        self._last_catalogue_fetch: float = 0  # timestamp of last fetch
+
         self._stats = {
             "scans": 0,
             "evaluations": 0,
@@ -121,6 +130,12 @@ class AutoBettingEngine:
             mode = MODE_STAGING
 
         self._mode = mode
+
+        # Reset catalogue caches for fresh start
+        self._runner_names.clear()
+        self._market_meta.clear()
+        self._catalogue_fetched = False
+        self._last_catalogue_fetch = 0
 
         # Load settings from DB
         session = await db.get_auto_session()
@@ -330,6 +345,66 @@ class AutoBettingEngine:
 
         logger.info("Engine loop ended")
 
+    async def _fetch_catalogue_metadata(self):
+        """Fetch runner names, venues, and market info from REST catalogue.
+
+        The Betfair Stream API does NOT include runner names in its
+        marketDefinition — only selectionId, status, sortPriority.
+        So we fetch the catalogue via REST once (and refresh periodically)
+        to populate the caches used during scanning.
+        """
+        if not betfair_client.session_token:
+            return
+
+        try:
+            catalogue = await betfair_client.list_market_catalogue(max_results=500)
+            if not catalogue:
+                return
+
+            count = 0
+            for cat in catalogue:
+                mid = cat.get("marketId")
+                if not mid:
+                    continue
+
+                # Cache runner names
+                if mid not in self._runner_names:
+                    self._runner_names[mid] = {}
+                for runner in cat.get("runners", []):
+                    sel_id = runner.get("selectionId")
+                    name = runner.get("runnerName", "Unknown")
+                    if sel_id is not None:
+                        self._runner_names[mid][sel_id] = name
+
+                # Cache market metadata (venue, name, start time)
+                event = cat.get("event", {})
+                self._market_meta[mid] = {
+                    "venue": event.get("venue", "") or cat.get("venue", ""),
+                    "name": cat.get("marketName", ""),
+                    "startTime": cat.get("marketStartTime", ""),
+                    "countryCode": event.get("countryCode", cat.get("countryCode", "")),
+                }
+                count += 1
+
+            self._catalogue_fetched = True
+            self._last_catalogue_fetch = time.time()
+            logger.info(f"Catalogue metadata cached: {count} markets, "
+                        f"{sum(len(v) for v in self._runner_names.values())} runners")
+
+        except BetfairAPIError as e:
+            logger.warning(f"Catalogue metadata fetch error: {e.message}")
+        except Exception as e:
+            logger.error(f"Catalogue metadata fetch error: {e}", exc_info=True)
+
+    def _get_runner_name(self, market_id: str, selection_id: int) -> str:
+        """Look up a runner name from the cached catalogue data."""
+        market_runners = self._runner_names.get(market_id, {})
+        return market_runners.get(selection_id, "Unknown")
+
+    def _get_market_meta(self, market_id: str) -> Dict[str, Any]:
+        """Look up market metadata (venue, name, startTime) from cache."""
+        return self._market_meta.get(market_id, {})
+
     async def _scan_markets(self):
         """Scan all cached markets and evaluate eligible ones.
 
@@ -338,6 +413,11 @@ class AutoBettingEngine:
         """
         cache = stream_manager.price_cache
         markets = cache.get_all_markets()
+
+        # Fetch catalogue metadata (runner names, venues) if not cached yet
+        # or refresh every 5 minutes. Stream API doesn't include runner names.
+        if not self._catalogue_fetched or (time.time() - self._last_catalogue_fetch > 300):
+            await self._fetch_catalogue_metadata()
 
         if not markets:
             # Stream cache empty — fall back to REST API
@@ -392,27 +472,35 @@ class AutoBettingEngine:
                 self._processed_markets.add(market_id)
                 continue
 
-            # Build market info
+            # Build market info — use cached catalogue metadata for
+            # venue/name/startTime since stream doesn't always have these
             market_def = market_data.get("marketDefinition", {})
+            meta = self._get_market_meta(market_id)
+
+            # Prefer catalogue metadata, fall back to stream marketDefinition
             market_info = {
                 "marketId": market_id,
-                "marketName": market_def.get("name", ""),
-                "venue": market_def.get("venue", ""),
-                "countryCode": market_def.get("countryCode", ""),
-                "marketStartTime": market_def.get("marketTime", ""),
+                "marketName": meta.get("name") or market_def.get("name", ""),
+                "venue": meta.get("venue") or market_def.get("venue", ""),
+                "countryCode": meta.get("countryCode") or market_def.get("countryCode", ""),
+                "marketStartTime": meta.get("startTime") or market_def.get("marketTime", ""),
                 "status": status,
                 "inPlay": False,
             }
 
             # Build runners list with live prices
+            # Runner names come from REST catalogue cache (stream doesn't include them)
             runners = []
             for sel_id, runner_data in market_data.get("runners", {}).items():
-                # Get runner name from definition
-                runner_name = "Unknown"
-                for rd in market_def.get("runners", []):
-                    if rd.get("id") == sel_id:
-                        runner_name = rd.get("name", rd.get("runnerName", "Unknown"))
-                        break
+                # Look up runner name from cached catalogue data
+                runner_name = self._get_runner_name(market_id, sel_id)
+
+                # Fallback: try stream marketDefinition (rarely has names, but just in case)
+                if runner_name == "Unknown":
+                    for rd in market_def.get("runners", []):
+                        if rd.get("id") == sel_id:
+                            runner_name = rd.get("name", rd.get("runnerName", "Unknown"))
+                            break
 
                 runners.append({
                     "selectionId": sel_id,
@@ -542,6 +630,7 @@ class AutoBettingEngine:
                 mid = book.get("marketId")
                 cat = catalogue_by_id.get(mid, {})
                 event = cat.get("event", {})
+                venue = event.get("venue", "") or cat.get("venue", "")
 
                 # Build runners dict keyed by selectionId
                 runners = {}
@@ -560,11 +649,26 @@ class AutoBettingEngine:
 
                 # Build runner definitions for name lookup
                 runner_defs = []
+                if mid not in self._runner_names:
+                    self._runner_names[mid] = {}
                 for cr in cat.get("runners", []):
+                    sel_id = cr.get("selectionId")
+                    name = cr.get("runnerName", "Unknown")
                     runner_defs.append({
-                        "id": cr.get("selectionId"),
-                        "name": cr.get("runnerName", "Unknown"),
+                        "id": sel_id,
+                        "name": name,
                     })
+                    # Also populate the runner name cache
+                    if sel_id is not None:
+                        self._runner_names[mid][sel_id] = name
+
+                # Populate market meta cache
+                self._market_meta[mid] = {
+                    "venue": venue,
+                    "name": cat.get("marketName", ""),
+                    "startTime": cat.get("marketStartTime", ""),
+                    "countryCode": event.get("countryCode", cat.get("countryCode", "")),
+                }
 
                 markets[mid] = {
                     "status": book.get("status", "OPEN"),
@@ -572,13 +676,15 @@ class AutoBettingEngine:
                     "runners": runners,
                     "marketDefinition": {
                         "name": cat.get("marketName", ""),
-                        "venue": event.get("venue", cat.get("venue", "")),
+                        "venue": venue,
                         "countryCode": event.get("countryCode", ""),
                         "marketTime": cat.get("marketStartTime", ""),
                         "runners": runner_defs,
                     },
                 }
 
+            self._catalogue_fetched = True
+            self._last_catalogue_fetch = time.time()
             logger.info(f"REST fallback: fetched {len(markets)} markets with prices")
             return markets
 
