@@ -133,6 +133,15 @@ class AutoBettingEngine:
         # Reset daily if needed
         await db.reset_auto_session_daily()
 
+        # Ensure stream is connected — engine needs price data to scan
+        if not stream_manager.is_connected and betfair_client.session_token:
+            logger.info("Stream not connected — starting before engine scan")
+            try:
+                await stream_manager.start(betfair_client.session_token)
+                logger.info("Stream started for engine")
+            except Exception as e:
+                logger.warning(f"Stream start failed: {e} — will use REST fallback")
+
         self._running = True
         self._task = asyncio.create_task(
             self._run_loop(),
@@ -309,12 +318,19 @@ class AutoBettingEngine:
         logger.info("Engine loop ended")
 
     async def _scan_markets(self):
-        """Scan all cached markets and evaluate eligible ones."""
+        """Scan all cached markets and evaluate eligible ones.
+
+        Primary source: Stream API price cache (real-time).
+        Fallback: REST API listMarketCatalogue + listMarketBook (every scan).
+        """
         cache = stream_manager.price_cache
         markets = cache.get_all_markets()
 
         if not markets:
-            return
+            # Stream cache empty — fall back to REST API
+            markets = await self._fetch_markets_rest()
+            if not markets:
+                return
 
         # Get today's bets and stats
         today_bets = await db.get_today_bets()
@@ -462,6 +478,89 @@ class AutoBettingEngine:
             await db.update_auto_session({
                 "processed_markets": list(self._processed_markets),
             })
+
+    # ─────────────────────────────────────────────────────────
+    # REST API Fallback
+    # ─────────────────────────────────────────────────────────
+
+    async def _fetch_markets_rest(self) -> dict:
+        """Fetch markets + prices via Betfair REST API when stream cache is empty."""
+        if not betfair_client.session_token:
+            return {}
+
+        try:
+            # 1. Get today's market catalogue
+            catalogue = await betfair_client.list_market_catalogue(max_results=100)
+            if not catalogue:
+                return {}
+
+            market_ids = [m["marketId"] for m in catalogue]
+
+            # 2. Get market books with prices (batch of up to 40)
+            all_books = []
+            for i in range(0, len(market_ids), 40):
+                batch = market_ids[i:i+40]
+                books = await betfair_client.list_market_book(
+                    market_ids=batch,
+                    price_projection=["EX_BEST_OFFERS"],
+                )
+                all_books.extend(books)
+
+            # 3. Build a dict matching the stream cache format
+            # so the rest of _scan_markets can work unchanged
+            markets = {}
+            catalogue_by_id = {m["marketId"]: m for m in catalogue}
+
+            for book in all_books:
+                mid = book.get("marketId")
+                cat = catalogue_by_id.get(mid, {})
+                event = cat.get("event", {})
+
+                # Build runners dict keyed by selectionId
+                runners = {}
+                for r in book.get("runners", []):
+                    sel_id = r.get("selectionId")
+                    ex = r.get("ex", {})
+                    # Convert REST format {price,size}[] → stream format [[price,size],...]
+                    atb = [[p["price"], p["size"]] for p in ex.get("availableToBack", [])]
+                    atl = [[p["price"], p["size"]] for p in ex.get("availableToLay", [])]
+                    runners[sel_id] = {
+                        "atb": atb,
+                        "atl": atl,
+                        "ltp": r.get("lastPriceTraded"),
+                        "tv": r.get("totalMatched", 0),
+                    }
+
+                # Build runner definitions for name lookup
+                runner_defs = []
+                for cr in cat.get("runners", []):
+                    runner_defs.append({
+                        "id": cr.get("selectionId"),
+                        "name": cr.get("runnerName", "Unknown"),
+                    })
+
+                markets[mid] = {
+                    "status": book.get("status", "OPEN"),
+                    "inPlay": book.get("inplay", False),
+                    "runners": runners,
+                    "marketDefinition": {
+                        "name": cat.get("marketName", ""),
+                        "venue": event.get("venue", cat.get("venue", "")),
+                        "countryCode": event.get("countryCode", ""),
+                        "marketTime": cat.get("marketStartTime", ""),
+                        "runners": runner_defs,
+                    },
+                }
+
+            logger.info(f"REST fallback: fetched {len(markets)} markets with prices")
+            return markets
+
+        except BetfairAPIError as e:
+            logger.warning(f"REST fallback error: {e.message}")
+            return {}
+        except Exception as e:
+            logger.error(f"REST fallback error: {e}", exc_info=True)
+            return {}
 
     # ─────────────────────────────────────────────────────────
     # Bet Placement
