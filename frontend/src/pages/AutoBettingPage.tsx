@@ -428,7 +428,7 @@ export default function AutoBettingPage() {
                         ? `${entry.data?.message || `Switched to ${entry.data?.mode}`}`
                         : entry.data?.runner_name
                           ? `${entry.type === 'bet_staged' ? '[SIM] ' : ''}${entry.data.venue} | ${entry.data.runner_name} @ ${formatOdds(entry.data.odds)} (${entry.data.zone})`
-                          : entry.data?.reason || entry.data?.message || JSON.stringify(entry.data).slice(0, 80)
+                          : entry.data?.reason || entry.data?.message || (entry.data ? JSON.stringify(entry.data).slice(0, 80) : 'Activity')
                       }
                     </span>
                   </div>

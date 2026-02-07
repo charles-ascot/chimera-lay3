@@ -96,7 +96,7 @@ CREATE TABLE IF NOT EXISTS plugins (
     author TEXT,
     description TEXT,
     config TEXT NOT NULL,
-    enabled INTEGER DEFAULT 0,
+    enabled INTEGER DEFAULT 1,
     priority INTEGER DEFAULT 0,
     created_at TEXT DEFAULT (datetime('now'))
 );
@@ -450,7 +450,7 @@ async def upsert_plugin(plugin_data: dict):
             plugin_data.get("author", ""),
             plugin_data.get("description", ""),
             config_json,
-            plugin_data.get("enabled", 0),
+            plugin_data.get("enabled", 1),
             plugin_data.get("priority", 0),
         ))
         await db.commit()

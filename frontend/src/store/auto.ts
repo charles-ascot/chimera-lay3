@@ -163,9 +163,14 @@ export const useAutoStore = create<AutoState>((set, get) => ({
   },
 
   addActivity: (activity) => {
+    if (!activity) return
     set((state) => ({
       activityLog: [
-        { ...activity, timestamp: new Date().toISOString() },
+        {
+          type: activity.type || 'info',
+          data: activity.data ?? {},
+          timestamp: activity.timestamp || new Date().toISOString(),
+        },
         ...state.activityLog.slice(0, 99), // Keep last 100
       ],
     }))
