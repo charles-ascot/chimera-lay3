@@ -269,13 +269,12 @@ class MarksRule1Plugin(BasePlugin):
             return None
 
         # ── Rule 3: Time filter (adjust stake) ──
+        # >420 min to race = half stake (Betfair accepts £1 minimum)
+        # PRIME £3 → £1.50, STRONG £2 → £1, SECONDARY £2 → £1
         time_rule = rules.get("rule_3_time_filter", {})
         if time_rule.get("enabled", True) and time_to_race_mins is not None:
-            for adj in time_rule.get("adjustments", []):
-                modifier = adj.get("stake_modifier", 1.0)
-                if time_to_race_mins > 420:
-                    stake = stake * 0.5
-                    break
+            if time_to_race_mins > 420:
+                stake = stake * 0.5
 
         # Round stake
         stake = round(stake, 2)
