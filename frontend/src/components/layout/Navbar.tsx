@@ -23,7 +23,7 @@ export default function Navbar() {
   return (
     <>
       {/* Desktop Nav */}
-      <nav className="hidden md:flex items-center justify-between px-6 py-3 glass-card rounded-none border-x-0 border-t-0">
+      <nav className="hidden md:flex items-center justify-between px-6 py-3 glass-card rounded-none border-x-0 border-t-0 sticky top-0 z-50">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-chimera-cyan to-chimera-purple flex items-center justify-center">
             <span className="text-white font-bold text-sm">C</span>

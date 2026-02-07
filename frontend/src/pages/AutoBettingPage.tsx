@@ -105,32 +105,54 @@ export default function AutoBettingPage() {
 
   return (
     <div className="max-w-7xl mx-auto space-y-6 animate-fade-in">
-      {/* Engine Control Bar */}
-      <div className="glass-card rounded-xl p-6">
-        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-xl font-semibold flex items-center gap-3">
-              Auto-Betting Engine
-              <ModeBadge mode={mode} />
-            </h1>
-            <p className="text-sm text-chimera-muted mt-1">
-              {mode === 'STAGING' && `Simulating bets | ${status?.bets_placed_today || 0} evaluated today`}
-              {mode === 'LIVE' && `LIVE — Real bets active | ${status?.bets_placed_today || 0} bets today`}
-              {mode === 'PAUSED' && `Paused | ${status?.bets_placed_today || 0} bets today`}
-              {mode === 'STOPPED' && 'Select a mode and click Start to begin'}
-            </p>
-          </div>
+      {/* Engine Control Bar — compact & sticky */}
+      <div className="glass-card rounded-xl px-4 py-3 sticky top-0 z-40">
+        {/* Row 1: Title + Controls */}
+        <div className="flex items-center justify-between gap-3">
+          <h1 className="text-base font-semibold flex items-center gap-2 flex-shrink-0">
+            Auto-Betting Engine
+            <ModeBadge mode={mode} />
+          </h1>
 
-          {/* Control Buttons */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            {/* Quick Action Buttons */}
+            <button
+              onClick={() => setShowPlugins(!showPlugins)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 ${
+                showPlugins
+                  ? 'bg-chimera-accent/10 border border-chimera-accent/30 text-chimera-accent'
+                  : 'bg-chimera-bg-card border border-chimera-border text-chimera-text-secondary hover:text-chimera-text'
+              }`}
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M14.25 6.087c0-.355.186-.676.401-.959.221-.29.349-.634.349-1.003 0-1.036-1.007-1.875-2.25-1.875s-2.25.84-2.25 1.875c0 .369.128.713.349 1.003.215.283.401.604.401.959v0a.64.64 0 0 1-.657.643 48.39 48.39 0 0 1-4.163-.3c.186 1.613.293 3.25.315 4.907a.656.656 0 0 1-.658.663v0c-.355 0-.676-.186-.959-.401a1.647 1.647 0 0 0-1.003-.349c-1.036 0-1.875 1.007-1.875 2.25s.84 2.25 1.875 2.25c.369 0 .713-.128 1.003-.349.283-.215.604-.401.959-.401v0c.31 0 .555.26.532.57a48.039 48.039 0 0 1-.642 5.056c1.518.19 3.058.309 4.616.354a.64.64 0 0 0 .657-.643v0c0-.355-.186-.676-.401-.959a1.647 1.647 0 0 1-.349-1.003c0-1.035 1.008-1.875 2.25-1.875 1.243 0 2.25.84 2.25 1.875 0 .369-.128.713-.349 1.003-.215.283-.4.604-.4.959v0c0 .333.277.599.61.58a48.1 48.1 0 0 0 5.427-.63 48.05 48.05 0 0 0 .582-4.717.532.532 0 0 0-.533-.57v0c-.355 0-.676.186-.959.401-.29.221-.634.349-1.003.349-1.035 0-1.875-1.007-1.875-2.25s.84-2.25 1.875-2.25c.37 0 .713.128 1.003.349.283.215.604.401.959.401v0a.656.656 0 0 0 .658-.663 48.422 48.422 0 0 0-.37-5.36c-1.886.342-3.81.574-5.766.689a.578.578 0 0 1-.61-.58v0Z" />
+              </svg>
+              Plugins
+            </button>
+            <button
+              onClick={() => setShowSettings(!showSettings)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 ${
+                showSettings
+                  ? 'bg-chimera-accent/10 border border-chimera-accent/30 text-chimera-accent'
+                  : 'bg-chimera-bg-card border border-chimera-border text-chimera-text-secondary hover:text-chimera-text'
+              }`}
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28Z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+              </svg>
+              Settings
+            </button>
+
+            <div className="w-px h-6 bg-chimera-border/50 mx-1" />
+
+            {/* Engine Control Buttons */}
             {!isRunning ? (
-              /* Stopped — show Mode selector + Start */
               <>
-                {/* Mode Selector */}
-                <div className="flex rounded-xl overflow-hidden border border-chimera-border">
+                <div className="flex rounded-lg overflow-hidden border border-chimera-border">
                   <button
                     onClick={() => setSelectedMode('STAGING')}
-                    className={`px-4 py-2.5 text-sm font-medium transition-all ${
+                    className={`px-3 py-1.5 text-xs font-medium transition-all ${
                       selectedMode === 'STAGING'
                         ? 'bg-chimera-cyan/20 text-chimera-cyan border-r border-chimera-cyan/30'
                         : 'bg-chimera-bg-card text-chimera-muted border-r border-chimera-border hover:bg-chimera-bg-card-hover'
@@ -140,7 +162,7 @@ export default function AutoBettingPage() {
                   </button>
                   <button
                     onClick={() => setSelectedMode('LIVE')}
-                    className={`px-4 py-2.5 text-sm font-medium transition-all ${
+                    className={`px-3 py-1.5 text-xs font-medium transition-all ${
                       selectedMode === 'LIVE'
                         ? 'bg-chimera-error/20 text-chimera-error'
                         : 'bg-chimera-bg-card text-chimera-muted hover:bg-chimera-bg-card-hover'
@@ -152,7 +174,7 @@ export default function AutoBettingPage() {
                 <button
                   onClick={handleStart}
                   disabled={loading}
-                  className={`px-6 py-2.5 rounded-xl font-semibold transition-all ${
+                  className={`px-5 py-1.5 rounded-lg text-xs font-bold transition-all ${
                     selectedMode === 'LIVE'
                       ? 'bg-chimera-error/10 border-2 border-chimera-error/30 text-chimera-error hover:bg-chimera-error/20'
                       : 'bg-chimera-success/10 border-2 border-chimera-success/30 text-chimera-success hover:bg-chimera-success/20'
@@ -162,12 +184,11 @@ export default function AutoBettingPage() {
                 </button>
               </>
             ) : mode === 'PAUSED' ? (
-              /* Paused — show Resume + Stop */
               <>
                 <button
                   onClick={handleResume}
                   disabled={loading}
-                  className="px-6 py-2.5 rounded-xl font-semibold transition-all
+                  className="px-5 py-1.5 rounded-lg text-xs font-bold transition-all
                     bg-chimera-success/10 border-2 border-chimera-success/30 text-chimera-success
                     hover:bg-chimera-success/20"
                 >
@@ -176,7 +197,7 @@ export default function AutoBettingPage() {
                 <button
                   onClick={handleStop}
                   disabled={loading}
-                  className="px-5 py-2.5 rounded-xl font-medium transition-all
+                  className="px-4 py-1.5 rounded-lg text-xs font-medium transition-all
                     bg-chimera-bg-card border border-chimera-border text-chimera-muted
                     hover:text-chimera-error hover:border-chimera-error/30"
                 >
@@ -184,12 +205,11 @@ export default function AutoBettingPage() {
                 </button>
               </>
             ) : mode === 'STAGING' ? (
-              /* Staging — show Go Live + Pause + Stop */
               <>
                 <button
                   onClick={handleGoLive}
                   disabled={loading}
-                  className="px-6 py-2.5 rounded-xl font-semibold transition-all
+                  className="px-5 py-1.5 rounded-lg text-xs font-bold transition-all
                     bg-chimera-success/10 border-2 border-chimera-success/30 text-chimera-success
                     hover:bg-chimera-success/20 glow-success"
                 >
@@ -198,7 +218,7 @@ export default function AutoBettingPage() {
                 <button
                   onClick={handlePause}
                   disabled={loading}
-                  className="px-5 py-2.5 rounded-xl font-medium transition-all
+                  className="px-4 py-1.5 rounded-lg text-xs font-medium transition-all
                     bg-chimera-warning/10 border border-chimera-warning/30 text-chimera-warning
                     hover:bg-chimera-warning/20"
                 >
@@ -207,7 +227,7 @@ export default function AutoBettingPage() {
                 <button
                   onClick={handleStop}
                   disabled={loading}
-                  className="px-5 py-2.5 rounded-xl font-medium transition-all
+                  className="px-4 py-1.5 rounded-lg text-xs font-medium transition-all
                     bg-chimera-bg-card border border-chimera-border text-chimera-muted
                     hover:text-chimera-error hover:border-chimera-error/30"
                 >
@@ -215,12 +235,11 @@ export default function AutoBettingPage() {
                 </button>
               </>
             ) : (
-              /* Live — show Go Staging + Pause + Stop */
               <>
                 <button
                   onClick={handleGoStaging}
                   disabled={loading}
-                  className="px-5 py-2.5 rounded-xl font-medium transition-all
+                  className="px-4 py-1.5 rounded-lg text-xs font-medium transition-all
                     bg-chimera-cyan/10 border border-chimera-cyan/30 text-chimera-cyan
                     hover:bg-chimera-cyan/20"
                 >
@@ -229,7 +248,7 @@ export default function AutoBettingPage() {
                 <button
                   onClick={handlePause}
                   disabled={loading}
-                  className="px-5 py-2.5 rounded-xl font-medium transition-all
+                  className="px-4 py-1.5 rounded-lg text-xs font-medium transition-all
                     bg-chimera-warning/10 border border-chimera-warning/30 text-chimera-warning
                     hover:bg-chimera-warning/20"
                 >
@@ -238,7 +257,7 @@ export default function AutoBettingPage() {
                 <button
                   onClick={handleStop}
                   disabled={loading}
-                  className="px-6 py-2.5 rounded-xl font-semibold transition-all
+                  className="px-5 py-1.5 rounded-lg text-xs font-bold transition-all
                     bg-chimera-error/10 border-2 border-chimera-error/30 text-chimera-error
                     hover:bg-chimera-error/20"
                 >
@@ -249,47 +268,16 @@ export default function AutoBettingPage() {
           </div>
         </div>
 
-        {/* Stats Bar */}
+        {/* Row 2: Compact Stats */}
         {status && (
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mt-6">
-            <MiniStat label="Today's P/L" value={formatGBP(status.daily_pnl, true)} className={pnlClass(status.daily_pnl)} />
-            <MiniStat label="Bets Placed" value={String(status.bets_placed_today)} className="text-chimera-cyan" />
-            <MiniStat label="Wins / Losses" value={`${status.wins_today} / ${status.losses_today}`} className="text-chimera-text" />
-            <MiniStat label="Exposure" value={formatGBP(status.daily_exposure)} className="text-chimera-warning" />
-            <MiniStat label="Markets Scanned" value={String(status.processed_markets_count)} className="text-chimera-muted" />
+          <div className="flex items-center gap-4 mt-2 pt-2 border-t border-chimera-border/20 text-xs flex-wrap">
+            <InlineStat label="P/L" value={formatGBP(status.daily_pnl, true)} className={pnlClass(status.daily_pnl)} />
+            <InlineStat label="Bets" value={String(status.bets_placed_today)} className="text-chimera-cyan" />
+            <InlineStat label="W/L" value={`${status.wins_today}/${status.losses_today}`} className="text-chimera-text" />
+            <InlineStat label="Exposure" value={formatGBP(status.daily_exposure)} className="text-chimera-warning" />
+            <InlineStat label="Scanned" value={String(status.processed_markets_count)} className="text-chimera-muted" />
           </div>
         )}
-
-        {/* Quick Action Buttons */}
-        <div className="flex items-center gap-3 mt-4 pt-4 border-t border-chimera-border/30">
-          <button
-            onClick={() => setShowPlugins(!showPlugins)}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
-              showPlugins
-                ? 'bg-chimera-accent/10 border border-chimera-accent/30 text-chimera-accent'
-                : 'bg-chimera-bg-card border border-chimera-border text-chimera-text-secondary hover:text-chimera-text hover:border-chimera-text-secondary/30'
-            }`}
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M14.25 6.087c0-.355.186-.676.401-.959.221-.29.349-.634.349-1.003 0-1.036-1.007-1.875-2.25-1.875s-2.25.84-2.25 1.875c0 .369.128.713.349 1.003.215.283.401.604.401.959v0a.64.64 0 0 1-.657.643 48.39 48.39 0 0 1-4.163-.3c.186 1.613.293 3.25.315 4.907a.656.656 0 0 1-.658.663v0c-.355 0-.676-.186-.959-.401a1.647 1.647 0 0 0-1.003-.349c-1.036 0-1.875 1.007-1.875 2.25s.84 2.25 1.875 2.25c.369 0 .713-.128 1.003-.349.283-.215.604-.401.959-.401v0c.31 0 .555.26.532.57a48.039 48.039 0 0 1-.642 5.056c1.518.19 3.058.309 4.616.354a.64.64 0 0 0 .657-.643v0c0-.355-.186-.676-.401-.959a1.647 1.647 0 0 1-.349-1.003c0-1.035 1.008-1.875 2.25-1.875 1.243 0 2.25.84 2.25 1.875 0 .369-.128.713-.349 1.003-.215.283-.4.604-.4.959v0c0 .333.277.599.61.58a48.1 48.1 0 0 0 5.427-.63 48.05 48.05 0 0 0 .582-4.717.532.532 0 0 0-.533-.57v0c-.355 0-.676.186-.959.401-.29.221-.634.349-1.003.349-1.035 0-1.875-1.007-1.875-2.25s.84-2.25 1.875-2.25c.37 0 .713.128 1.003.349.283.215.604.401.959.401v0a.656.656 0 0 0 .658-.663 48.422 48.422 0 0 0-.37-5.36c-1.886.342-3.81.574-5.766.689a.578.578 0 0 1-.61-.58v0Z" />
-            </svg>
-            Manage Plugins
-          </button>
-          <button
-            onClick={() => setShowSettings(!showSettings)}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
-              showSettings
-                ? 'bg-chimera-accent/10 border border-chimera-accent/30 text-chimera-accent'
-                : 'bg-chimera-bg-card border border-chimera-border text-chimera-text-secondary hover:text-chimera-text hover:border-chimera-text-secondary/30'
-            }`}
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28Z" />
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
-            </svg>
-            Settings
-          </button>
-        </div>
       </div>
 
       {/* Live Confirmation Modal */}
@@ -444,12 +432,12 @@ export default function AutoBettingPage() {
                 Bets ({autoBets.length})
               </h2>
             </div>
-            <div className="overflow-x-auto max-h-96">
+            <div className="overflow-auto max-h-96">
               {autoBets.length === 0 ? (
                 <p className="text-xs text-chimera-muted py-8 text-center">No bets yet — start the engine to begin</p>
               ) : (
                 <table className="w-full text-xs">
-                  <thead>
+                  <thead className="sticky top-0 z-10 bg-chimera-bg-secondary">
                     <tr className="text-chimera-muted border-b border-chimera-border">
                       <th className="px-3 py-2 text-left">Time</th>
                       <th className="px-3 py-2 text-left">Venue</th>
@@ -780,11 +768,11 @@ function ModeBadge({ mode }: { mode: string }) {
   )
 }
 
-function MiniStat({ label, value, className = '' }: { label: string; value: string; className?: string }) {
+function InlineStat({ label, value, className = '' }: { label: string; value: string; className?: string }) {
   return (
-    <div className="text-center py-2">
-      <div className="text-[10px] text-chimera-muted uppercase tracking-wider">{label}</div>
-      <div className={`text-lg font-semibold font-mono ${className}`}>{value}</div>
+    <div className="flex items-center gap-1.5">
+      <span className="text-chimera-muted">{label}:</span>
+      <span className={`font-mono font-semibold ${className}`}>{value}</span>
     </div>
   )
 }
