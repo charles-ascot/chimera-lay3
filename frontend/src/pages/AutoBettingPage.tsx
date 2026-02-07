@@ -1,9 +1,20 @@
 /**
  * CHIMERA v2 Auto Betting Page
- * Engine controls, plugin manager, settings, activity log, bet list
+ * Engine controls with STAGING / LIVE modes, plugin manager, settings, activity log, bet list
+ *
+ * Modes:
+ *   STOPPED  → Engine off
+ *   STAGING  → Engine evaluates everything, shows what it WOULD bet, but no real money
+ *   LIVE     → Real bets placed via Betfair API
+ *
+ * User can:
+ *   - Start in STAGING (default) or LIVE
+ *   - Switch from STAGING → LIVE ("Go Live") without restarting
+ *   - Switch from LIVE → STAGING without restarting
+ *   - Stop from any mode
  */
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useAutoStore } from '../store/auto'
 import { useToastStore } from '../store/toast'
 import { formatGBP, formatDateTime, pnlClass, zoneBgColor, formatOdds, formatRelative } from '../lib/utils'
@@ -13,9 +24,12 @@ import StatusBadge from '../components/shared/StatusBadge'
 export default function AutoBettingPage() {
   const {
     status, plugins, autoBets, activityLog, loading,
-    fetchStatus, fetchPlugins, fetchAutoBets, startEngine, stopEngine, togglePlugin,
+    fetchStatus, fetchPlugins, fetchAutoBets,
+    startEngine, stopEngine, goLive, goStaging, togglePlugin,
   } = useAutoStore()
   const { addToast } = useToastStore()
+  const [showLiveConfirm, setShowLiveConfirm] = useState(false)
+  const [skipStaging, setSkipStaging] = useState(false)
 
   useEffect(() => {
     fetchStatus()
@@ -28,9 +42,23 @@ export default function AutoBettingPage() {
     return () => clearInterval(interval)
   }, [fetchStatus, fetchPlugins, fetchAutoBets])
 
+  const isRunning = status?.is_running || false
+  const mode = status?.mode || 'STOPPED'
+
   const handleStart = async () => {
-    const ok = await startEngine()
-    addToast(ok ? 'Engine started' : 'Failed to start engine', ok ? 'success' : 'error')
+    const startMode = skipStaging ? 'LIVE' : 'STAGING'
+    if (startMode === 'LIVE') {
+      setShowLiveConfirm(true)
+      return
+    }
+    const ok = await startEngine('STAGING')
+    addToast(ok ? 'Engine started in STAGING mode' : 'Failed to start engine', ok ? 'success' : 'error')
+  }
+
+  const handleStartLiveConfirmed = async () => {
+    setShowLiveConfirm(false)
+    const ok = await startEngine('LIVE')
+    addToast(ok ? 'Engine started in LIVE mode — real bets active!' : 'Failed to start engine', ok ? 'success' : 'error')
   }
 
   const handleStop = async () => {
@@ -38,7 +66,26 @@ export default function AutoBettingPage() {
     addToast(ok ? 'Engine stopped' : 'Failed to stop engine', ok ? 'info' : 'error')
   }
 
-  const isRunning = status?.is_running || false
+  const handleGoLive = async () => {
+    setShowLiveConfirm(true)
+  }
+
+  const handleGoLiveConfirmed = async () => {
+    setShowLiveConfirm(false)
+    const ok = await goLive()
+    addToast(
+      ok ? 'LIVE MODE — Real bets are now active!' : 'Failed to switch to live',
+      ok ? 'success' : 'error'
+    )
+  }
+
+  const handleGoStaging = async () => {
+    const ok = await goStaging()
+    addToast(
+      ok ? 'Switched to STAGING — no real bets' : 'Failed to switch to staging',
+      ok ? 'info' : 'error'
+    )
+  }
 
   return (
     <div className="max-w-7xl mx-auto space-y-6 animate-fade-in">
@@ -48,36 +95,85 @@ export default function AutoBettingPage() {
           <div>
             <h1 className="text-xl font-semibold flex items-center gap-3">
               Auto-Betting Engine
-              {isRunning ? (
-                <span className="badge-success flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-chimera-success animate-pulse" />
-                  RUNNING
-                </span>
-              ) : (
-                <span className="badge bg-chimera-bg-card text-chimera-muted border-chimera-border">
-                  STOPPED
-                </span>
-              )}
+              <ModeBadge mode={mode} />
             </h1>
             <p className="text-sm text-chimera-muted mt-1">
-              {isRunning
-                ? `Processing markets | ${status?.bets_placed_today || 0} bets today`
-                : 'Click Start to begin auto-betting'
-              }
+              {mode === 'STAGING' && `Simulating bets | ${status?.bets_placed_today || 0} evaluated today`}
+              {mode === 'LIVE' && `LIVE — Real bets active | ${status?.bets_placed_today || 0} bets today`}
+              {mode === 'STOPPED' && 'Click Stage to begin simulated evaluation'}
             </p>
           </div>
 
-          <button
-            onClick={isRunning ? handleStop : handleStart}
-            disabled={loading}
-            className={`px-8 py-3 rounded-xl font-semibold text-lg transition-all ${
-              isRunning
-                ? 'bg-chimera-error/10 border-2 border-chimera-error/30 text-chimera-error hover:bg-chimera-error/20'
-                : 'bg-chimera-success/10 border-2 border-chimera-success/30 text-chimera-success hover:bg-chimera-success/20 glow-success'
-            }`}
-          >
-            {loading ? <LoadingSpinner size="sm" /> : isRunning ? 'STOP' : 'START'}
-          </button>
+          {/* Control Buttons */}
+          <div className="flex items-center gap-3">
+            {!isRunning ? (
+              /* Stopped — show Start buttons */
+              <>
+                <button
+                  onClick={handleStart}
+                  disabled={loading}
+                  className="px-6 py-3 rounded-xl font-semibold transition-all
+                    bg-chimera-cyan/10 border-2 border-chimera-cyan/30 text-chimera-cyan
+                    hover:bg-chimera-cyan/20"
+                >
+                  {loading ? <LoadingSpinner size="sm" /> : skipStaging ? 'START LIVE' : 'STAGE'}
+                </button>
+                <label className="flex items-center gap-2 text-xs text-chimera-muted cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={skipStaging}
+                    onChange={(e) => setSkipStaging(e.target.checked)}
+                    className="w-3.5 h-3.5 rounded border-chimera-border bg-chimera-bg-card accent-chimera-accent"
+                  />
+                  Skip staging
+                </label>
+              </>
+            ) : mode === 'STAGING' ? (
+              /* Staging — show Go Live + Stop */
+              <>
+                <button
+                  onClick={handleGoLive}
+                  disabled={loading}
+                  className="px-6 py-3 rounded-xl font-semibold transition-all
+                    bg-chimera-success/10 border-2 border-chimera-success/30 text-chimera-success
+                    hover:bg-chimera-success/20 glow-success"
+                >
+                  {loading ? <LoadingSpinner size="sm" /> : 'GO LIVE'}
+                </button>
+                <button
+                  onClick={handleStop}
+                  disabled={loading}
+                  className="px-5 py-3 rounded-xl font-medium transition-all
+                    bg-chimera-bg-card border border-chimera-border text-chimera-muted
+                    hover:text-chimera-error hover:border-chimera-error/30"
+                >
+                  STOP
+                </button>
+              </>
+            ) : (
+              /* Live — show Go Staging + Stop */
+              <>
+                <button
+                  onClick={handleGoStaging}
+                  disabled={loading}
+                  className="px-5 py-3 rounded-xl font-medium transition-all
+                    bg-chimera-cyan/10 border border-chimera-cyan/30 text-chimera-cyan
+                    hover:bg-chimera-cyan/20"
+                >
+                  STAGING
+                </button>
+                <button
+                  onClick={handleStop}
+                  disabled={loading}
+                  className="px-6 py-3 rounded-xl font-semibold transition-all
+                    bg-chimera-error/10 border-2 border-chimera-error/30 text-chimera-error
+                    hover:bg-chimera-error/20"
+                >
+                  STOP
+                </button>
+              </>
+            )}
+          </div>
         </div>
 
         {/* Stats Bar */}
@@ -91,6 +187,42 @@ export default function AutoBettingPage() {
           </div>
         )}
       </div>
+
+      {/* Live Confirmation Modal */}
+      {showLiveConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="glass-card rounded-2xl p-8 max-w-md mx-4 border border-chimera-error/30">
+            <div className="text-center">
+              <div className="w-14 h-14 mx-auto mb-4 rounded-full bg-chimera-error/10 flex items-center justify-center">
+                <svg className="w-7 h-7 text-chimera-error" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+                </svg>
+              </div>
+              <h2 className="text-lg font-bold text-chimera-text mb-2">Go Live?</h2>
+              <p className="text-sm text-chimera-text-secondary mb-6">
+                This will place <strong>real bets with real money</strong> on Betfair Exchange.
+                Make sure you're happy with the strategy and settings.
+              </p>
+              <div className="flex gap-3 justify-center">
+                <button
+                  onClick={() => setShowLiveConfirm(false)}
+                  className="btn-secondary px-6"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={skipStaging && !isRunning ? handleStartLiveConfirmed : handleGoLiveConfirmed}
+                  className="px-6 py-2.5 rounded-lg font-semibold text-sm
+                    bg-chimera-error/10 border-2 border-chimera-error/40 text-chimera-error
+                    hover:bg-chimera-error/20 transition-all"
+                >
+                  Confirm — Go Live
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Column: Plugins + Settings */}
@@ -157,12 +289,16 @@ export default function AutoBettingPage() {
                     </span>
                     <span className={
                       entry.type === 'bet_placed' ? 'text-chimera-success' :
+                      entry.type === 'bet_staged' ? 'text-chimera-cyan' :
                       entry.type === 'bet_failed' ? 'text-chimera-error' :
+                      entry.type === 'mode_change' ? 'text-chimera-warning font-semibold' :
                       'text-chimera-text'
                     }>
-                      {entry.data?.runner_name
-                        ? `${entry.data.venue} | ${entry.data.runner_name} @ ${formatOdds(entry.data.odds)} (${entry.data.zone})`
-                        : entry.data?.reason || JSON.stringify(entry.data).slice(0, 80)
+                      {entry.type === 'mode_change'
+                        ? `⚡ ${entry.data?.message || `Switched to ${entry.data?.mode}`}`
+                        : entry.data?.runner_name
+                          ? `${entry.type === 'bet_staged' ? '🔍 ' : ''}${entry.data.venue} | ${entry.data.runner_name} @ ${formatOdds(entry.data.odds)} (${entry.data.zone})`
+                          : entry.data?.reason || entry.data?.message || JSON.stringify(entry.data).slice(0, 80)
                       }
                     </span>
                   </div>
@@ -171,16 +307,16 @@ export default function AutoBettingPage() {
             </div>
           </div>
 
-          {/* Auto Bet List */}
+          {/* Bet List */}
           <div className="glass-card rounded-xl overflow-hidden">
             <div className="px-4 py-3 border-b border-chimera-border">
               <h2 className="text-sm font-semibold text-chimera-text-secondary">
-                Auto Bets ({autoBets.length})
+                Bets ({autoBets.length})
               </h2>
             </div>
             <div className="overflow-x-auto max-h-96">
               {autoBets.length === 0 ? (
-                <p className="text-xs text-chimera-muted py-8 text-center">No auto bets placed yet</p>
+                <p className="text-xs text-chimera-muted py-8 text-center">No bets yet — start the engine to begin</p>
               ) : (
                 <table className="w-full text-xs">
                   <thead>
@@ -192,13 +328,19 @@ export default function AutoBettingPage() {
                       <th className="px-3 py-2 text-right">Stake</th>
                       <th className="px-3 py-2 text-right">Liability</th>
                       <th className="px-3 py-2 text-center">Zone</th>
+                      <th className="px-3 py-2 text-center">Type</th>
                       <th className="px-3 py-2 text-center">Status</th>
                       <th className="px-3 py-2 text-right">P/L</th>
                     </tr>
                   </thead>
                   <tbody>
                     {autoBets.map((bet) => (
-                      <tr key={bet.id} className="border-b border-chimera-border/30 hover:bg-chimera-bg-card-hover">
+                      <tr
+                        key={bet.id}
+                        className={`border-b border-chimera-border/30 hover:bg-chimera-bg-card-hover ${
+                          bet.source === 'STAGED' ? 'opacity-75' : ''
+                        }`}
+                      >
                         <td className="px-3 py-2 text-chimera-muted">{formatDateTime(bet.placed_at)}</td>
                         <td className="px-3 py-2">{bet.venue || '-'}</td>
                         <td className="px-3 py-2 font-medium">{bet.runner_name || '-'}</td>
@@ -209,10 +351,23 @@ export default function AutoBettingPage() {
                           {bet.zone && <span className={`badge ${zoneBgColor(bet.zone)}`}>{bet.zone}</span>}
                         </td>
                         <td className="px-3 py-2 text-center">
+                          {bet.source === 'STAGED' ? (
+                            <span className="badge bg-chimera-cyan/10 text-chimera-cyan border-chimera-cyan/20">
+                              STAGED
+                            </span>
+                          ) : (
+                            <span className="badge bg-chimera-success/10 text-chimera-success border-chimera-success/20">
+                              LIVE
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 text-center">
                           <StatusBadge status={bet.result || bet.status} />
                         </td>
-                        <td className={`px-3 py-2 text-right font-mono ${pnlClass(bet.profit_loss)}`}>
-                          {formatGBP(bet.profit_loss, true)}
+                        <td className={`px-3 py-2 text-right font-mono ${
+                          bet.source === 'STAGED' ? 'text-chimera-muted' : pnlClass(bet.profit_loss)
+                        }`}>
+                          {bet.source === 'STAGED' ? '-' : formatGBP(bet.profit_loss, true)}
                         </td>
                       </tr>
                     ))}
@@ -224,6 +379,32 @@ export default function AutoBettingPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+// ── Mode Badge ──
+
+function ModeBadge({ mode }: { mode: string }) {
+  if (mode === 'LIVE') {
+    return (
+      <span className="badge bg-chimera-error/10 text-chimera-error border-chimera-error/20 flex items-center gap-1.5">
+        <span className="w-2 h-2 rounded-full bg-chimera-error animate-pulse" />
+        LIVE
+      </span>
+    )
+  }
+  if (mode === 'STAGING') {
+    return (
+      <span className="badge bg-chimera-cyan/10 text-chimera-cyan border-chimera-cyan/20 flex items-center gap-1.5">
+        <span className="w-2 h-2 rounded-full bg-chimera-cyan animate-pulse" />
+        STAGING
+      </span>
+    )
+  }
+  return (
+    <span className="badge bg-chimera-bg-card text-chimera-muted border-chimera-border">
+      STOPPED
+    </span>
   )
 }
 

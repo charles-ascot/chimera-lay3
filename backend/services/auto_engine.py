@@ -10,6 +10,8 @@ Key features:
 - State persisted in SQLite auto_session table
 - Evaluates all active plugins in priority order (stackable)
 - Full decision logging for every evaluation
+- STAGING mode: runs full pipeline without placing real bets
+- GO LIVE: switch from staging to live without restarting
 """
 
 import asyncio
@@ -29,22 +31,35 @@ import database as db
 
 logger = logging.getLogger(__name__)
 
+# Engine modes
+MODE_STOPPED = "STOPPED"
+MODE_STAGING = "STAGING"
+MODE_LIVE = "LIVE"
+
 
 class AutoBettingEngine:
     """
     Background auto-betting engine.
 
+    Modes:
+    - STOPPED: Engine not running
+    - STAGING: Full evaluation pipeline runs, bets recorded as STAGED
+              (no real money). Everything visible in UI.
+    - LIVE:   Real bets placed via Betfair API.
+
     Flow:
     1. Periodically scan the price cache for eligible markets
     2. For each market, check if already processed / bet placed
     3. Run active plugins in priority order
-    4. If a plugin returns ACCEPT → place bet via REST API
-    5. Record everything to SQLite
-    6. Broadcast status to frontend via WebSocket
+    4. If STAGING → record simulated bet (source=STAGED)
+    5. If LIVE → place real bet via REST API (source=AUTO)
+    6. Record everything to SQLite
+    7. Broadcast status to frontend via WebSocket
     """
 
     def __init__(self):
         self._running = False
+        self._mode = MODE_STOPPED
         self._task: Optional[asyncio.Task] = None
         self._settings: Dict[str, Any] = {
             "max_liability_per_bet": config.DEFAULT_MAX_LIABILITY_PER_BET,
@@ -59,6 +74,7 @@ class AutoBettingEngine:
             "scans": 0,
             "evaluations": 0,
             "bets_placed": 0,
+            "bets_staged": 0,
             "errors": 0,
             "last_scan": None,
         }
@@ -68,19 +84,36 @@ class AutoBettingEngine:
         return self._running
 
     @property
+    def mode(self) -> str:
+        return self._mode
+
+    @property
+    def is_staging(self) -> bool:
+        return self._mode == MODE_STAGING
+
+    @property
+    def is_live(self) -> bool:
+        return self._mode == MODE_LIVE
+
+    @property
     def stats(self) -> dict:
-        return {**self._stats, "is_running": self._running}
+        return {**self._stats, "is_running": self._running, "mode": self._mode}
 
     def update_settings(self, settings: dict):
         """Update engine settings."""
         self._settings.update(settings)
         logger.info(f"Engine settings updated: {settings}")
 
-    async def start(self):
-        """Start the auto-betting engine."""
+    async def start(self, mode: str = MODE_STAGING):
+        """Start the auto-betting engine in the given mode."""
         if self._running:
             logger.warning("Engine already running")
             return
+
+        if mode not in (MODE_STAGING, MODE_LIVE):
+            mode = MODE_STAGING
+
+        self._mode = mode
 
         # Load settings from DB
         session = await db.get_auto_session()
@@ -102,12 +135,18 @@ class AutoBettingEngine:
         # Update DB
         await db.update_auto_session({"is_running": 1})
 
-        logger.info("Auto-betting engine STARTED")
-        await broadcast_engine_status({"is_running": True, "message": "Engine started"})
+        logger.info(f"Auto-betting engine STARTED in {mode} mode")
+        await broadcast_engine_status({
+            "is_running": True,
+            "mode": mode,
+            "message": f"Engine started in {mode} mode",
+        })
 
     async def stop(self):
         """Stop the auto-betting engine."""
         self._running = False
+        prev_mode = self._mode
+        self._mode = MODE_STOPPED
 
         if self._task and not self._task.done():
             self._task.cancel()
@@ -122,8 +161,60 @@ class AutoBettingEngine:
             "processed_markets": list(self._processed_markets),
         })
 
-        logger.info("Auto-betting engine STOPPED")
-        await broadcast_engine_status({"is_running": False, "message": "Engine stopped"})
+        logger.info(f"Auto-betting engine STOPPED (was {prev_mode})")
+        await broadcast_engine_status({
+            "is_running": False,
+            "mode": MODE_STOPPED,
+            "message": "Engine stopped",
+        })
+
+    async def go_live(self):
+        """Switch from STAGING to LIVE mode without restarting."""
+        if not self._running:
+            logger.warning("Engine not running — cannot go live")
+            return False
+
+        if self._mode == MODE_LIVE:
+            logger.info("Already in LIVE mode")
+            return True
+
+        self._mode = MODE_LIVE
+        logger.info("Engine switched to LIVE mode — real bets will be placed")
+        await broadcast_engine_status({
+            "is_running": True,
+            "mode": MODE_LIVE,
+            "message": "Engine switched to LIVE — real bets active",
+        })
+        await broadcast_engine_activity({
+            "type": "mode_change",
+            "mode": MODE_LIVE,
+            "message": "Switched to LIVE mode",
+        })
+        return True
+
+    async def go_staging(self):
+        """Switch from LIVE back to STAGING mode without restarting."""
+        if not self._running:
+            logger.warning("Engine not running — cannot switch to staging")
+            return False
+
+        if self._mode == MODE_STAGING:
+            logger.info("Already in STAGING mode")
+            return True
+
+        self._mode = MODE_STAGING
+        logger.info("Engine switched to STAGING mode — no real bets")
+        await broadcast_engine_status({
+            "is_running": True,
+            "mode": MODE_STAGING,
+            "message": "Engine switched to STAGING — simulated bets only",
+        })
+        await broadcast_engine_activity({
+            "type": "mode_change",
+            "mode": MODE_STAGING,
+            "message": "Switched to STAGING mode",
+        })
+        return True
 
     async def reload_plugins(self):
         """Reload plugins (called when plugin config changes)."""
@@ -260,23 +351,33 @@ class AutoBettingEngine:
                     )
 
                     if result.action == "ACCEPT" and result.candidates:
-                        # Place the bet!
                         candidate = result.candidates[0]
-                        success = await self._place_bet(
-                            candidate=candidate,
-                            market_info=market_info,
-                            plugin=plugin,
-                        )
 
-                        if success:
+                        if self._mode == MODE_LIVE:
+                            # LIVE — place real bet via Betfair API
+                            success = await self._place_bet(
+                                candidate=candidate,
+                                market_info=market_info,
+                                plugin=plugin,
+                            )
+                            if success:
+                                self._processed_markets.add(market_id)
+                                self._stats["bets_placed"] += 1
+                        else:
+                            # STAGING — record simulated bet, no real money
+                            await self._stage_bet(
+                                candidate=candidate,
+                                market_info=market_info,
+                                plugin=plugin,
+                            )
                             self._processed_markets.add(market_id)
-                            self._stats["bets_placed"] += 1
+                            self._stats["bets_staged"] += 1
 
-                            # Refresh daily stats
-                            today_bets = await db.get_today_bets()
-                            today_stats = await db.get_daily_stats()
-                            daily_pnl = today_stats.get("profit_loss", 0)
-                            daily_exposure = today_stats.get("exposure", 0)
+                        # Refresh daily stats
+                        today_bets = await db.get_today_bets()
+                        today_stats = await db.get_daily_stats()
+                        daily_pnl = today_stats.get("profit_loss", 0)
+                        daily_exposure = today_stats.get("exposure", 0)
 
                         break  # Don't evaluate more plugins for this market
 
@@ -410,6 +511,67 @@ class AutoBettingEngine:
             logger.error(f"Error placing auto bet: {e}", exc_info=True)
             self._stats["errors"] += 1
             return False
+
+    # ─────────────────────────────────────────────────────────
+    # Staged (Simulated) Bet
+    # ─────────────────────────────────────────────────────────
+
+    async def _stage_bet(
+        self,
+        candidate: BetCandidate,
+        market_info: dict,
+        plugin: Any,
+    ):
+        """Record a simulated bet — no real money, just logged for review."""
+        logger.info(
+            f"STAGED BET: {market_info.get('venue', '?')} | "
+            f"{candidate.runner_name} | {candidate.odds:.2f} | "
+            f"£{candidate.stake:.2f} | {candidate.zone} | "
+            f"Plugin: {plugin.get_id()}"
+        )
+
+        # Generate a fake staged bet ID
+        staged_id = f"STAGED-{int(time.time() * 1000)}"
+
+        bet_data = {
+            "bet_id": staged_id,
+            "market_id": candidate.market_id,
+            "market_name": market_info.get("marketName"),
+            "venue": market_info.get("venue"),
+            "country_code": market_info.get("countryCode"),
+            "race_time": market_info.get("marketStartTime"),
+            "selection_id": candidate.selection_id,
+            "runner_name": candidate.runner_name,
+            "side": "LAY",
+            "stake": candidate.stake,
+            "odds": candidate.odds,
+            "liability": candidate.liability,
+            "zone": candidate.zone,
+            "confidence": candidate.confidence,
+            "rule_id": plugin.get_id(),
+            "persistence_type": "LAPSE",
+            "status": "STAGED",
+            "size_matched": 0,
+            "size_remaining": candidate.stake,
+            "source": "STAGED",
+        }
+        await db.insert_bet(bet_data)
+
+        # Broadcast to frontend
+        await broadcast_engine_activity({
+            "type": "bet_staged",
+            "bet_id": staged_id,
+            "market_id": candidate.market_id,
+            "venue": market_info.get("venue"),
+            "runner_name": candidate.runner_name,
+            "odds": candidate.odds,
+            "stake": candidate.stake,
+            "liability": candidate.liability,
+            "zone": candidate.zone,
+            "confidence": candidate.confidence,
+            "plugin": plugin.get_id(),
+            "status": "STAGED",
+        })
 
     # ─────────────────────────────────────────────────────────
     # Decision Logging

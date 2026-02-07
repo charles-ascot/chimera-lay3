@@ -5,7 +5,7 @@
 
 import { create } from 'zustand'
 import { autoApi } from '../lib/api'
-import type { AutoBettingStatus, Bet } from '../types/app'
+import type { AutoBettingStatus, Bet, EngineMode } from '../types/app'
 import type { Plugin } from '../types/plugin'
 
 interface AutoState {
@@ -19,8 +19,10 @@ interface AutoState {
   fetchStatus: () => Promise<void>
   fetchPlugins: () => Promise<void>
   fetchAutoBets: () => Promise<void>
-  startEngine: () => Promise<boolean>
+  startEngine: (mode?: EngineMode) => Promise<boolean>
   stopEngine: () => Promise<boolean>
+  goLive: () => Promise<boolean>
+  goStaging: () => Promise<boolean>
   togglePlugin: (pluginId: string, enabled: boolean) => Promise<void>
   updateSettings: (settings: Record<string, any>) => Promise<void>
   addActivity: (activity: any) => void
@@ -62,10 +64,10 @@ export const useAutoStore = create<AutoState>((set, get) => ({
     }
   },
 
-  startEngine: async () => {
+  startEngine: async (mode: EngineMode = 'STAGING') => {
     set({ loading: true })
     try {
-      await autoApi.start()
+      await autoApi.start(mode)
       await get().fetchStatus()
       set({ loading: false })
       return true
@@ -84,6 +86,32 @@ export const useAutoStore = create<AutoState>((set, get) => ({
       return true
     } catch (err: any) {
       set({ loading: false, error: err.response?.data?.detail || 'Failed to stop' })
+      return false
+    }
+  },
+
+  goLive: async () => {
+    set({ loading: true })
+    try {
+      await autoApi.goLive()
+      await get().fetchStatus()
+      set({ loading: false })
+      return true
+    } catch (err: any) {
+      set({ loading: false, error: err.response?.data?.detail || 'Failed to go live' })
+      return false
+    }
+  },
+
+  goStaging: async () => {
+    set({ loading: true })
+    try {
+      await autoApi.goStaging()
+      await get().fetchStatus()
+      set({ loading: false })
+      return true
+    } catch (err: any) {
+      set({ loading: false, error: err.response?.data?.detail || 'Failed to switch to staging' })
       return false
     }
   },

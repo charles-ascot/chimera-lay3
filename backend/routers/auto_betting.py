@@ -30,17 +30,17 @@ def set_engine(engine):
 
 
 @router.post("/start")
-async def start_engine():
-    """Start the auto-betting engine."""
+async def start_engine(mode: str = "STAGING"):
+    """Start the auto-betting engine. Mode: STAGING (default) or LIVE."""
     if _engine is None:
         raise HTTPException(status_code=500, detail="Engine not initialized")
 
     if _engine.is_running:
-        return {"status": "ALREADY_RUNNING", "message": "Engine is already running"}
+        return {"status": "ALREADY_RUNNING", "mode": _engine.mode, "message": "Engine is already running"}
 
-    await _engine.start()
+    await _engine.start(mode=mode.upper())
 
-    return {"status": "STARTED", "message": "Auto-betting engine started"}
+    return {"status": "STARTED", "mode": _engine.mode, "message": f"Engine started in {_engine.mode} mode"}
 
 
 @router.post("/stop")
@@ -54,7 +54,33 @@ async def stop_engine():
 
     await _engine.stop()
 
-    return {"status": "STOPPED", "message": "Auto-betting engine stopped"}
+    return {"status": "STOPPED", "mode": "STOPPED", "message": "Auto-betting engine stopped"}
+
+
+@router.post("/go-live")
+async def go_live():
+    """Switch engine from STAGING to LIVE mode (real bets)."""
+    if _engine is None:
+        raise HTTPException(status_code=500, detail="Engine not initialized")
+
+    if not _engine.is_running:
+        raise HTTPException(status_code=400, detail="Engine is not running. Start it first.")
+
+    success = await _engine.go_live()
+    return {"status": "LIVE" if success else "FAILED", "mode": _engine.mode}
+
+
+@router.post("/go-staging")
+async def go_staging():
+    """Switch engine from LIVE back to STAGING mode (simulated bets)."""
+    if _engine is None:
+        raise HTTPException(status_code=500, detail="Engine not initialized")
+
+    if not _engine.is_running:
+        raise HTTPException(status_code=400, detail="Engine is not running. Start it first.")
+
+    success = await _engine.go_staging()
+    return {"status": "STAGING" if success else "FAILED", "mode": _engine.mode}
 
 
 @router.get("/status")
@@ -64,9 +90,11 @@ async def get_status():
     today_stats = await db.get_daily_stats()
 
     is_running = _engine.is_running if _engine else False
+    mode = _engine.mode if _engine else "STOPPED"
 
     return {
         "is_running": is_running,
+        "mode": mode,
         "active_plugins": session.get("active_plugins", []),
         "daily_exposure": today_stats.get("exposure", 0),
         "daily_pnl": today_stats.get("profit_loss", 0),
@@ -81,9 +109,15 @@ async def get_status():
 
 
 @router.get("/bets")
-async def get_auto_bets(limit: int = 50, offset: int = 0):
-    """Get list of auto-placed bets."""
-    bets = await db.get_bets(source="AUTO", limit=limit, offset=offset)
+async def get_auto_bets(limit: int = 50, offset: int = 0, source: Optional[str] = None):
+    """Get list of auto/staged bets. Source filter: AUTO, STAGED, or None for both."""
+    if source:
+        bets = await db.get_bets(source=source, limit=limit, offset=offset)
+    else:
+        # Return both AUTO and STAGED bets
+        auto = await db.get_bets(source="AUTO", limit=limit, offset=offset)
+        staged = await db.get_bets(source="STAGED", limit=limit, offset=offset)
+        bets = sorted(auto + staged, key=lambda b: b.get("placed_at", ""), reverse=True)[:limit]
     return {"bets": bets, "count": len(bets)}
 
 

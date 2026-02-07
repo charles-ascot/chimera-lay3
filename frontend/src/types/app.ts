@@ -43,8 +43,11 @@ export interface DailyStats {
   roi?: number
 }
 
+export type EngineMode = 'STOPPED' | 'STAGING' | 'LIVE'
+
 export interface AutoBettingStatus {
   is_running: boolean
+  mode: EngineMode
   active_plugins: string[]
   daily_exposure: number
   daily_pnl: number

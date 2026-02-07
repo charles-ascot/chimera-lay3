@@ -95,13 +95,17 @@ export const accountApi = {
 // ─────────────────────────────────────────────────────────
 
 export const autoApi = {
-  start: () => api.post('/api/auto/start'),
+  start: (mode: string = 'STAGING') => api.post('/api/auto/start', null, { params: { mode } }),
 
   stop: () => api.post('/api/auto/stop'),
 
+  goLive: () => api.post('/api/auto/go-live'),
+
+  goStaging: () => api.post('/api/auto/go-staging'),
+
   getStatus: () => api.get('/api/auto/status'),
 
-  getBets: (params?: { limit?: number; offset?: number }) =>
+  getBets: (params?: { limit?: number; offset?: number; source?: string }) =>
     api.get('/api/auto/bets', { params }),
 
   updateSettings: (settings: Record<string, any>) =>
