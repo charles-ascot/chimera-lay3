@@ -1,0 +1,80 @@
+/**
+ * CHIMERA v2 Markets Store (Zustand)
+ * Market catalogue + live price updates from WebSocket
+ */
+
+import { create } from 'zustand'
+import { marketsApi } from '../lib/api'
+import type { Market, Runner } from '../types/betfair'
+
+interface MarketsState {
+  markets: Market[]
+  selectedMarketId: string | null
+  livePrices: Record<string, Record<number, { atb: number[][]; atl: number[][]; ltp: number | null; tv: number }>>
+  marketStatuses: Record<string, { status: string; inPlay: boolean }>
+  loading: boolean
+  error: string | null
+
+  fetchMarkets: () => Promise<void>
+  selectMarket: (marketId: string | null) => void
+  updatePrices: (marketId: string, runners: any[]) => void
+  updateMarketStatus: (marketId: string, status: string, inPlay: boolean) => void
+  getSelectedMarket: () => Market | null
+}
+
+export const useMarketsStore = create<MarketsState>((set, get) => ({
+  markets: [],
+  selectedMarketId: null,
+  livePrices: {},
+  marketStatuses: {},
+  loading: false,
+  error: null,
+
+  fetchMarkets: async () => {
+    set({ loading: true, error: null })
+    try {
+      const { data } = await marketsApi.getCatalogue()
+      set({ markets: data.markets || [], loading: false })
+    } catch (err: any) {
+      set({
+        error: err.response?.data?.detail || 'Failed to fetch markets',
+        loading: false,
+      })
+    }
+  },
+
+  selectMarket: (marketId) => set({ selectedMarketId: marketId }),
+
+  updatePrices: (marketId, runners) => {
+    set((state) => {
+      const updated = { ...state.livePrices }
+      if (!updated[marketId]) updated[marketId] = {}
+
+      for (const r of runners) {
+        updated[marketId][r.selectionId] = {
+          atb: r.atb || [],
+          atl: r.atl || [],
+          ltp: r.ltp ?? null,
+          tv: r.tv || 0,
+        }
+      }
+
+      return { livePrices: updated }
+    })
+  },
+
+  updateMarketStatus: (marketId, status, inPlay) => {
+    set((state) => ({
+      marketStatuses: {
+        ...state.marketStatuses,
+        [marketId]: { status, inPlay },
+      },
+    }))
+  },
+
+  getSelectedMarket: () => {
+    const { markets, selectedMarketId } = get()
+    if (!selectedMarketId) return null
+    return markets.find((m) => m.marketId === selectedMarketId) || null
+  },
+}))

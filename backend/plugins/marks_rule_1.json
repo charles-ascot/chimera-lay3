@@ -1,0 +1,305 @@
+{
+  "strategy": {
+    "name": "Chimera Lay Mid-Range Contenders",
+    "version": "1.1.0",
+    "created": "2026-02-04",
+    "updated": "2026-02-06",
+    "author": "Cape Berkshire Ltd",
+    "description": "Lay betting strategy targeting market inefficiency in the 3.00-4.49 odds range",
+    "data_source": {
+      "account_holder": "Mark Insley",
+      "platform": "Betfair",
+      "analysis_period": "2026-02-01 to 2026-02-05",
+      "total_bets_analyzed": 80,
+      "validation_bets": 18
+    }
+  },
+
+  "rules": {
+    "rule_1_odds_filter": {
+      "description": "Primary odds range filter - only accept bets within optimal range",
+      "enabled": true,
+      "conditions": {
+        "min_odds": 3.00,
+        "max_odds": 4.49
+      },
+      "zones": {
+        "prime": {
+          "min": 3.50,
+          "max": 3.99,
+          "expected_win_rate": 0.941,
+          "expected_edge": 0.179,
+          "historical_roi": 0.806
+        },
+        "strong": {
+          "min": 3.00,
+          "max": 3.49,
+          "expected_win_rate": 0.917,
+          "expected_edge": 0.054,
+          "historical_roi": 0.225
+        },
+        "secondary": {
+          "min": 4.00,
+          "max": 4.49,
+          "expected_win_rate": 0.857,
+          "expected_edge": 0.096,
+          "historical_roi": 0.670
+        }
+      },
+      "rejection_reasons": {
+        "below_min": "Odds too low - favourites win too often",
+        "above_max": "Odds too high - liability risk exceeds edge"
+      }
+    },
+
+    "rule_2_tiered_staking": {
+      "description": "Stake sizing based on odds zone confidence",
+      "enabled": true,
+      "currency": "GBP",
+      "tiers": [
+        {
+          "name": "PRIME",
+          "condition": "odds >= 3.50 AND odds <= 3.99",
+          "stake": 3.00,
+          "confidence": "HIGH",
+          "rationale": "Highest edge zone with 94.1% win rate"
+        },
+        {
+          "name": "STRONG",
+          "condition": "odds >= 3.00 AND odds <= 3.49",
+          "stake": 2.00,
+          "confidence": "MEDIUM-HIGH",
+          "rationale": "Strong performance with 91.7% win rate"
+        },
+        {
+          "name": "SECONDARY",
+          "condition": "odds >= 4.00 AND odds <= 4.49",
+          "stake": 2.00,
+          "confidence": "MEDIUM",
+          "rationale": "Good edge but higher liability exposure"
+        }
+      ],
+      "default_stake": 0,
+      "default_action": "REJECT"
+    },
+
+    "rule_3_time_filter": {
+      "description": "Time to race preference - closer bets have more stable odds",
+      "enabled": true,
+      "conditions": {
+        "preferred_max_minutes": 120,
+        "caution_threshold_minutes": 420,
+        "reject_if_beyond_minutes": null
+      },
+      "adjustments": [
+        {
+          "condition": "time_to_race_minutes <= 120",
+          "stake_modifier": 1.0,
+          "confidence_boost": "HIGH",
+          "rationale": "Odds more stable, 82.4% historical win rate"
+        },
+        {
+          "condition": "time_to_race_minutes > 120 AND time_to_race_minutes <= 420",
+          "stake_modifier": 1.0,
+          "confidence_boost": "MEDIUM",
+          "rationale": "Acceptable but monitor for drift"
+        },
+        {
+          "condition": "time_to_race_minutes > 420",
+          "stake_modifier": 0.5,
+          "confidence_boost": "LOW",
+          "rationale": "Early bets face price movement risk"
+        }
+      ]
+    },
+
+    "rule_4_drift_filter": {
+      "description": "Monitor odds drift between placement and match - significant shortening indicates informed money",
+      "enabled": true,
+      "status": "MONITORING",
+      "conditions": {
+        "warning_threshold_percent": -5.0,
+        "alert_threshold_percent": -10.0,
+        "critical_threshold_percent": -20.0
+      },
+      "actions": {
+        "on_warning": "LOG_AND_CONTINUE",
+        "on_alert": "FLAG_FOR_REVIEW",
+        "on_critical": "CONSIDER_CANCEL"
+      },
+      "evidence": {
+        "description": "Bets in 4.00-4.49 range that shortened >5% showed only 33.3% win rate vs 100% for stable odds",
+        "sample_size": 10,
+        "requires_more_data": true,
+        "minimum_bets_for_hard_rule": 100
+      },
+      "calculation": {
+        "formula": "((matched_odds - requested_odds) / requested_odds) * 100",
+        "example": {
+          "requested_odds": 4.00,
+          "matched_odds": 3.59,
+          "drift_percent": -10.25,
+          "interpretation": "Horse shortened by 10.25% - smart money coming in"
+        }
+      }
+    }
+  },
+
+  "risk_management": {
+    "liability": {
+      "calculation": "stake * (odds - 1)",
+      "max_per_bet": 9.00,
+      "max_daily_exposure": 75.00,
+      "examples": [
+        {"odds": 3.50, "stake": 3.00, "liability": 7.50},
+        {"odds": 4.00, "stake": 2.00, "liability": 6.00},
+        {"odds": 4.49, "stake": 2.00, "liability": 6.98}
+      ]
+    },
+    "stop_loss": {
+      "daily_limit": -25.00,
+      "action_on_trigger": "HALT_ALL_BETTING",
+      "reset": "NEXT_CALENDAR_DAY"
+    },
+    "bet_limits": {
+      "max_bets_per_race": 1,
+      "max_bets_per_meeting": null,
+      "max_concurrent_open_bets": 10
+    }
+  },
+
+  "bet_settings": {
+    "persistence": {
+      "type": "CANCEL",
+      "description": "Cancel unmatched portion at in-play transition"
+    },
+    "matching": {
+      "take_best_price": true,
+      "minimum_matched_percent": 100
+    }
+  },
+
+  "exclusions": {
+    "hard_reject": [
+      {
+        "condition": "odds < 2.50",
+        "reason": "Favourites win too often - historical loss of £7.91 (-27% ROI)"
+      },
+      {
+        "condition": "odds >= 6.00",
+        "reason": "Liability risk outweighs edge - historical loss of £7.13 (-119% ROI)"
+      }
+    ],
+    "soft_reject": [
+      {
+        "condition": "odds >= 4.50 AND odds < 6.00",
+        "reason": "Outside optimal range but not catastrophic"
+      },
+      {
+        "condition": "odds >= 2.50 AND odds < 3.00",
+        "reason": "Marginal edge, break-even territory"
+      }
+    ]
+  },
+
+  "expected_performance": {
+    "overall": {
+      "win_rate": 0.864,
+      "roi_percent": 63.8,
+      "edge_percent": 13.0
+    },
+    "by_zone": {
+      "prime_3.50_3.99": {
+        "win_rate": 0.941,
+        "roi_percent": 80.6,
+        "edge_percent": 17.9
+      },
+      "strong_3.00_3.49": {
+        "win_rate": 0.917,
+        "roi_percent": 22.5,
+        "edge_percent": 5.4
+      },
+      "secondary_4.00_4.49": {
+        "win_rate": 0.857,
+        "roi_percent": 67.0,
+        "edge_percent": 9.6
+      }
+    },
+    "streaks": {
+      "max_winning": 12,
+      "max_losing": 3
+    }
+  },
+
+  "decision_logic": {
+    "pseudocode": [
+      "1. CHECK odds >= 3.00 AND odds <= 4.49",
+      "   IF FALSE → REJECT (outside range)",
+      "",
+      "2. DETERMINE zone:",
+      "   IF odds >= 3.50 AND odds <= 3.99 → PRIME (stake £3)",
+      "   IF odds >= 3.00 AND odds <= 3.49 → STRONG (stake £2)",
+      "   IF odds >= 4.00 AND odds <= 4.49 → SECONDARY (stake £2)",
+      "",
+      "3. CALCULATE liability = stake × (odds - 1)",
+      "   IF liability > 9.00 → REJECT (liability cap)",
+      "",
+      "4. CHECK daily exposure",
+      "   IF (current_exposure + liability) > 75.00 → REJECT",
+      "",
+      "5. CHECK daily P/L",
+      "   IF daily_pnl <= -25.00 → REJECT (stop-loss)",
+      "",
+      "6. CHECK duplicate",
+      "   IF already_bet_this_race → REJECT",
+      "",
+      "7. ACCEPT bet with calculated stake"
+    ],
+    "python_function": "def evaluate_bet(odds, time_to_race_mins, daily_pnl, daily_exposure, race_id, bets_today):\n    # Rule 1: Odds filter\n    if odds < 3.00 or odds > 4.49:\n        return {'action': 'REJECT', 'reason': 'Outside odds range 3.00-4.49'}\n    \n    # Rule 2: Determine stake by zone\n    if 3.50 <= odds <= 3.99:\n        stake = 3.00\n        zone = 'PRIME'\n    elif 3.00 <= odds <= 3.49:\n        stake = 2.00\n        zone = 'STRONG'\n    else:  # 4.00-4.49\n        stake = 2.00\n        zone = 'SECONDARY'\n    \n    # Calculate liability\n    liability = stake * (odds - 1)\n    \n    # Risk checks\n    if liability > 9.00:\n        return {'action': 'REJECT', 'reason': f'Liability £{liability:.2f} exceeds £9.00 cap'}\n    \n    if daily_exposure + liability > 75.00:\n        return {'action': 'REJECT', 'reason': 'Would exceed daily exposure limit'}\n    \n    if daily_pnl <= -25.00:\n        return {'action': 'REJECT', 'reason': 'Daily stop-loss triggered'}\n    \n    if race_id in [b['race_id'] for b in bets_today]:\n        return {'action': 'REJECT', 'reason': 'Already bet on this race'}\n    \n    # Rule 3: Time adjustment (optional stake reduction)\n    if time_to_race_mins > 420:\n        stake = stake * 0.5\n        liability = stake * (odds - 1)\n    \n    return {\n        'action': 'ACCEPT',\n        'stake': stake,\n        'liability': liability,\n        'zone': zone,\n        'confidence': 'HIGH' if zone == 'PRIME' else 'MEDIUM'\n    }"
+  },
+
+  "monitoring": {
+    "metrics_to_track": [
+      "win_rate_by_zone",
+      "roi_by_zone",
+      "drift_correlation_with_losses",
+      "time_to_race_impact",
+      "daily_pnl_curve"
+    ],
+    "alerts": [
+      {
+        "condition": "rolling_20_win_rate < 0.70",
+        "action": "PAUSE_AND_REVIEW",
+        "message": "Win rate dropped below 70% over last 20 bets"
+      },
+      {
+        "condition": "daily_pnl < -15.00",
+        "action": "WARN",
+        "message": "Approaching daily stop-loss limit"
+      },
+      {
+        "condition": "consecutive_losses >= 3",
+        "action": "PAUSE_AND_REVIEW",
+        "message": "3 consecutive losses - review market conditions"
+      }
+    ],
+    "review_triggers": {
+      "after_n_bets": 50,
+      "on_new_loss_pattern": true,
+      "weekly_summary": true
+    }
+  },
+
+  "version_history": [
+    {
+      "version": "1.0.0",
+      "date": "2026-02-04",
+      "changes": "Initial strategy based on 62-bet analysis"
+    },
+    {
+      "version": "1.1.0",
+      "date": "2026-02-06",
+      "changes": "Added Rule 4 drift filter (monitoring), updated with 80-bet analysis, refined tiered staking from Rule 2 analysis, incorporated live validation results (18 bets)"
+    }
+  ]
+}

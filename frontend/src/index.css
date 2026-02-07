@@ -1,0 +1,178 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─────────────────────────────────────────────────────── */
+/* CHIMERA v2 — Horse Club Dark Theme                      */
+/* ─────────────────────────────────────────────────────── */
+
+@layer base {
+  body {
+    @apply bg-chimera-bg text-chimera-text font-sans;
+    background: linear-gradient(135deg, #0f0f1a 0%, #1a1a2e 50%, #0f0f1a 100%);
+    min-height: 100vh;
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-chimera-border rounded-full;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-chimera-border-active;
+  }
+}
+
+@layer components {
+  /* Glass card */
+  .glass-card {
+    @apply bg-chimera-bg-card backdrop-blur-md border border-chimera-border rounded-xl;
+  }
+
+  .glass-card-hover {
+    @apply glass-card hover:bg-chimera-bg-card-hover hover:border-chimera-border-active transition-all duration-200;
+  }
+
+  /* Accent glow button */
+  .btn-primary {
+    @apply px-5 py-2.5 rounded-lg font-medium text-sm
+           bg-chimera-accent text-white
+           hover:bg-chimera-accent-hover
+           active:scale-[0.98]
+           transition-all duration-150
+           shadow-[0_0_20px_rgba(200,149,108,0.15)];
+  }
+
+  .btn-primary:disabled {
+    @apply opacity-50 cursor-not-allowed;
+  }
+
+  /* Secondary button */
+  .btn-secondary {
+    @apply px-4 py-2 rounded-lg font-medium text-sm
+           bg-chimera-bg-card border border-chimera-border text-chimera-text
+           hover:bg-chimera-bg-card-hover hover:border-chimera-border-active
+           active:scale-[0.98]
+           transition-all duration-150;
+  }
+
+  /* Danger button */
+  .btn-danger {
+    @apply px-4 py-2 rounded-lg font-medium text-sm
+           bg-chimera-error/10 border border-chimera-error/30 text-chimera-error
+           hover:bg-chimera-error/20
+           active:scale-[0.98]
+           transition-all duration-150;
+  }
+
+  /* Input fields */
+  .input-field {
+    @apply w-full px-3 py-2 rounded-lg text-sm
+           bg-chimera-bg-card border border-chimera-border
+           text-chimera-text placeholder-chimera-muted
+           focus:outline-none focus:border-chimera-accent focus:ring-1 focus:ring-chimera-accent/30
+           transition-colors duration-150;
+  }
+
+  /* Status badges */
+  .badge {
+    @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border;
+  }
+
+  .badge-success {
+    @apply badge bg-chimera-success/10 text-chimera-success border-chimera-success/20;
+  }
+
+  .badge-error {
+    @apply badge bg-chimera-error/10 text-chimera-error border-chimera-error/20;
+  }
+
+  .badge-warning {
+    @apply badge bg-chimera-warning/10 text-chimera-warning border-chimera-warning/20;
+  }
+
+  .badge-info {
+    @apply badge bg-chimera-cyan/10 text-chimera-cyan border-chimera-cyan/20;
+  }
+
+  .badge-inplay {
+    @apply badge bg-chimera-inplay/10 text-chimera-inplay border-chimera-inplay/20 animate-pulse-slow;
+  }
+
+  /* Price cells */
+  .price-back {
+    @apply bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded px-2 py-1 text-center font-mono text-sm;
+  }
+
+  .price-lay {
+    @apply bg-pink-500/10 text-pink-400 border border-pink-500/20 rounded px-2 py-1 text-center font-mono text-sm
+           cursor-pointer hover:bg-pink-500/20 hover:border-pink-400/40 transition-colors;
+  }
+
+  /* Toast */
+  .toast {
+    @apply glass-card p-4 rounded-xl shadow-2xl animate-slide-up;
+  }
+
+  .toast-success {
+    @apply border-chimera-success/30;
+  }
+
+  .toast-error {
+    @apply border-chimera-error/30;
+  }
+
+  .toast-info {
+    @apply border-chimera-cyan/30;
+  }
+
+  /* Tab navigation */
+  .nav-tab {
+    @apply px-4 py-2 text-sm font-medium text-chimera-muted
+           hover:text-chimera-text transition-colors duration-150
+           border-b-2 border-transparent;
+  }
+
+  .nav-tab-active {
+    @apply nav-tab text-chimera-accent border-chimera-accent;
+  }
+
+  /* Stat card */
+  .stat-card {
+    @apply glass-card p-4 rounded-xl;
+  }
+
+  .stat-label {
+    @apply text-xs text-chimera-muted uppercase tracking-wider;
+  }
+
+  .stat-value {
+    @apply text-2xl font-semibold font-mono mt-1;
+  }
+}
+
+@layer utilities {
+  /* Gradient text */
+  .gradient-text {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-chimera-cyan to-chimera-purple;
+  }
+
+  /* Glow effects */
+  .glow-accent {
+    box-shadow: 0 0 20px rgba(200, 149, 108, 0.15);
+  }
+
+  .glow-success {
+    box-shadow: 0 0 15px rgba(34, 197, 94, 0.15);
+  }
+
+  .glow-error {
+    box-shadow: 0 0 15px rgba(239, 68, 68, 0.15);
+  }
+}
