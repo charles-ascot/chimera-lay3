@@ -43,7 +43,7 @@ class Config:
     DEFAULT_MAX_LIABILITY_PER_BET: float = 9.00
     DEFAULT_MAX_DAILY_EXPOSURE: float = 75.00
     DEFAULT_DAILY_STOP_LOSS: float = -25.00
-    DEFAULT_MAX_CONCURRENT_BETS: int = 10
+    DEFAULT_MAX_CONCURRENT_BETS: int = 999
     DEFAULT_MAX_BETS_PER_RACE: int = 1
 
     # Stream data archive
