@@ -152,6 +152,10 @@ class AutoBettingEngine:
         # Reset daily if needed
         await db.reset_auto_session_daily()
 
+        # Seed processed markets from Betfair current orders
+        # Prevents double-betting on markets we already have bets on
+        await self._seed_from_betfair_orders()
+
         # Ensure stream is connected — engine needs price data to scan
         if not stream_manager.is_connected and betfair_client.session_token:
             logger.info("Stream not connected — starting before engine scan")
@@ -344,6 +348,41 @@ class AutoBettingEngine:
             await asyncio.sleep(self._scan_interval)
 
         logger.info("Engine loop ended")
+
+    async def _seed_from_betfair_orders(self):
+        """Fetch current orders from Betfair to prevent double-betting.
+
+        On engine start, checks Betfair for any existing matched/pending
+        orders and adds those market IDs to _processed_markets so the
+        engine won't place duplicate bets.
+        """
+        if not betfair_client.session_token:
+            return
+
+        try:
+            result = await betfair_client.list_current_orders()
+            orders = result.get("currentOrders", [])
+            if not orders:
+                logger.info("No existing Betfair orders found")
+                return
+
+            seeded = set()
+            for order in orders:
+                market_id = order.get("marketId")
+                if market_id:
+                    seeded.add(market_id)
+                    self._processed_markets.add(market_id)
+
+            if seeded:
+                logger.info(
+                    f"Seeded {len(seeded)} markets from Betfair current orders "
+                    f"(prevents double-betting)"
+                )
+
+        except BetfairAPIError as e:
+            logger.warning(f"Failed to fetch current orders: {e.message}")
+        except Exception as e:
+            logger.error(f"Failed to fetch current orders: {e}", exc_info=True)
 
     async def _fetch_catalogue_metadata(self):
         """Fetch runner names, venues, and market info from REST catalogue.
