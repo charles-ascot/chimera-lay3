@@ -7,13 +7,14 @@ Rules:
   2. Tiered Staking: PRIME (3.50-3.99) £3, STRONG (3.00-3.49) £2, SECONDARY (4.00-4.49) £2
   3. Time Filter: >420min = half stake
   4. Drift Filter (OPTIONAL toggle): Monitor odds drift post-placement
+  5. Favourite Filter: Skip top 2 favourites (lowest odds runners) in each race
 
 Risk Management:
   - Max £9 liability per bet
   - Max £75 daily exposure
   - Max -£25 daily stop-loss
   - Max 1 bet per race
-  - Max 10 concurrent open bets
+  - No limit on concurrent bets (bet on every qualifying race)
 """
 
 import json
@@ -92,7 +93,7 @@ class MarksRule1Plugin(BasePlugin):
             "risk_management": {
                 "liability": {"max_per_bet": 9.00, "max_daily_exposure": 75.00},
                 "stop_loss": {"daily_limit": -25.00},
-                "bet_limits": {"max_bets_per_race": 1, "max_concurrent_open_bets": 10},
+                "bet_limits": {"max_bets_per_race": 1, "max_concurrent_open_bets": null},
             },
         }
 
@@ -178,17 +179,23 @@ class MarksRule1Plugin(BasePlugin):
                 reason=f"Already have {current_race_bets} bet(s) on this race",
             )
 
-        # Check max concurrent bets
-        max_concurrent = settings.get("max_concurrent_bets", 10)
-        open_bets = [b for b in bets_today if b.get("status") in ("PENDING", "MATCHED") and not b.get("result")]
-        if len(open_bets) >= max_concurrent:
-            return PluginResult(
-                action="REJECT",
-                reason=f"Max concurrent bets reached ({max_concurrent})",
-            )
-
         # Calculate time to race
         time_to_race_mins = self._calc_time_to_race(market)
+
+        # ── Rule 5: Favourite filter — skip top 2 favourites ──
+        rules = self._config.get("rules", {})
+        fav_rule = rules.get("rule_5_favourite_filter", {})
+        skip_top_n = fav_rule.get("skip_top_n", 2) if fav_rule.get("enabled", True) else 0
+        favourite_ids = set()
+        if skip_top_n > 0:
+            runners_with_odds = []
+            for r in runners:
+                odds = self._get_lay_odds(r)
+                if odds is not None:
+                    runners_with_odds.append((r.get("selectionId"), odds))
+            # Sort by odds ascending — lowest odds = favourite
+            runners_with_odds.sort(key=lambda x: x[1])
+            favourite_ids = {sid for sid, _ in runners_with_odds[:skip_top_n]}
 
         # ── Evaluate each runner ──
 
@@ -202,6 +209,7 @@ class MarksRule1Plugin(BasePlugin):
                 daily_exposure=daily_exposure,
                 time_to_race_mins=time_to_race_mins,
                 settings=settings,
+                favourite_ids=favourite_ids,
             )
             if result:
                 candidates.append(result)
@@ -214,8 +222,8 @@ class MarksRule1Plugin(BasePlugin):
                     )
 
         if candidates:
-            # Sort by confidence (PRIME first, then STRONG, then SECONDARY)
-            zone_priority = {"PRIME": 0, "STRONG": 1, "SECONDARY": 2}
+            # Sort by confidence (PRIME first, then STRONG, then SECONDARY, then WIDE)
+            zone_priority = {"PRIME": 0, "STRONG": 1, "SECONDARY": 2, "WIDE": 3}
             candidates.sort(key=lambda c: zone_priority.get(c.zone, 99))
 
             # Take the best candidate (1 per race)
@@ -241,6 +249,7 @@ class MarksRule1Plugin(BasePlugin):
         daily_exposure: float,
         time_to_race_mins: Optional[float],
         settings: dict,
+        favourite_ids: set = None,
     ) -> Optional[BetCandidate]:
         """
         Evaluate a single runner against all rules.
@@ -253,17 +262,13 @@ class MarksRule1Plugin(BasePlugin):
         if odds is None or selection_id is None:
             return None
 
-        # ── Rule 1: Odds Filter ──
-        rules = self._config.get("rules", {})
-        odds_rule = rules.get("rule_1_odds_filter", {})
-        if odds_rule.get("enabled", True):
-            min_odds = odds_rule.get("conditions", {}).get("min_odds", 3.00)
-            max_odds = odds_rule.get("conditions", {}).get("max_odds", 4.49)
-
-            if odds < min_odds or odds > max_odds:
-                return None
+        # ── Rule 5: Skip top N favourites ──
+        if favourite_ids and selection_id in favourite_ids:
+            return None
 
         # ── Rule 2: Determine zone and stake ──
+        # Tiered zones: PRIME £3, STRONG £2, SECONDARY £2
+        # Runners outside 3.00-4.49: WIDE zone at £1 minimum stake
         zone, stake = self._determine_zone_and_stake(odds)
         if zone is None:
             return None
@@ -292,7 +297,8 @@ class MarksRule1Plugin(BasePlugin):
             return None
 
         # ── Build candidate ──
-        confidence = "HIGH" if zone == "PRIME" else ("MEDIUM-HIGH" if zone == "STRONG" else "MEDIUM")
+        confidence_map = {"PRIME": "HIGH", "STRONG": "MEDIUM-HIGH", "SECONDARY": "MEDIUM", "WIDE": "LOW"}
+        confidence = confidence_map.get(zone, "LOW")
 
         return BetCandidate(
             runner_name=runner_name,
@@ -307,7 +313,12 @@ class MarksRule1Plugin(BasePlugin):
         )
 
     def _determine_zone_and_stake(self, odds: float) -> tuple[Optional[str], float]:
-        """Determine the zone and base stake for given odds."""
+        """Determine the zone and base stake for given odds.
+
+        Tiered zones (3.00-4.49) get higher stakes based on historical edge.
+        Runners outside this range get WIDE zone at £1 minimum stake.
+        Always returns a zone — never rejects based on odds alone.
+        """
         tiers = (
             self._config
             .get("rules", {})
@@ -335,7 +346,8 @@ class MarksRule1Plugin(BasePlugin):
             elif 4.00 <= odds <= 4.49:
                 return "SECONDARY", 2.00
 
-        return None, 0
+        # Outside the tiered zones — use £1 minimum stake
+        return "WIDE", 1.00
 
     @staticmethod
     def _get_lay_odds(runner: dict) -> Optional[float]:

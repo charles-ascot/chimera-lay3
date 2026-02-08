@@ -17,8 +17,8 @@
 
   "rules": {
     "rule_1_odds_filter": {
-      "description": "Primary odds range filter - only accept bets within optimal range",
-      "enabled": true,
+      "description": "Odds range filter - DISABLED to bet on every race. Tiered zones still apply for staking.",
+      "enabled": false,
       "conditions": {
         "min_odds": 3.00,
         "max_odds": 4.49
