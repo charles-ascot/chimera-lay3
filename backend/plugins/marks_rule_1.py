@@ -7,14 +7,13 @@ Rules:
   2. Tiered Staking: PRIME (3.50-3.99) £3, STRONG (3.00-3.49) £2, SECONDARY (4.00-4.49) £2
   3. Time Filter: >420min = half stake
   4. Drift Filter (OPTIONAL toggle): Monitor odds drift post-placement
-  5. Favourite Filter: Skip top 2 favourites (lowest odds runners) in each race
 
 Risk Management:
   - Max £9 liability per bet
   - Max £75 daily exposure
   - Max -£25 daily stop-loss
   - Max 1 bet per race
-  - No limit on concurrent bets (bet on every qualifying race)
+  - Max 10 concurrent open bets
 """
 
 import json
@@ -179,24 +178,17 @@ class MarksRule1Plugin(BasePlugin):
                 reason=f"Already have {current_race_bets} bet(s) on this race",
             )
 
+        # Check max concurrent bets
+        max_concurrent = settings.get("max_concurrent_bets", 10)
+        open_bets = [b for b in bets_today if b.get("status") in ("PENDING", "MATCHED") and not b.get("result")]
+        if len(open_bets) >= max_concurrent:
+            return PluginResult(
+                action="REJECT",
+                reason=f"Max concurrent bets reached ({max_concurrent})",
+            )
+
         # Calculate time to race
         time_to_race_mins = self._calc_time_to_race(market)
-
-        # ── Rule 5: Favourite filter — skip top 2 favourites ──
-        # Rank runners by best lay odds (lowest = most fancied)
-        # to identify the top 2 favourites in the market
-        fav_rule = rules.get("rule_5_favourite_filter", {})
-        skip_top_n = fav_rule.get("skip_top_n", 2) if fav_rule.get("enabled", True) else 0
-        favourite_ids = set()
-        if skip_top_n > 0:
-            runners_with_odds = []
-            for r in runners:
-                odds = self._get_lay_odds(r)
-                if odds is not None:
-                    runners_with_odds.append((r.get("selectionId"), odds))
-            # Sort by odds ascending — lowest odds = favourite
-            runners_with_odds.sort(key=lambda x: x[1])
-            favourite_ids = {sid for sid, _ in runners_with_odds[:skip_top_n]}
 
         # ── Evaluate each runner ──
 
@@ -210,7 +202,6 @@ class MarksRule1Plugin(BasePlugin):
                 daily_exposure=daily_exposure,
                 time_to_race_mins=time_to_race_mins,
                 settings=settings,
-                favourite_ids=favourite_ids,
             )
             if result:
                 candidates.append(result)
@@ -250,7 +241,6 @@ class MarksRule1Plugin(BasePlugin):
         daily_exposure: float,
         time_to_race_mins: Optional[float],
         settings: dict,
-        favourite_ids: set = None,
     ) -> Optional[BetCandidate]:
         """
         Evaluate a single runner against all rules.
@@ -261,10 +251,6 @@ class MarksRule1Plugin(BasePlugin):
         odds = self._get_lay_odds(runner)
 
         if odds is None or selection_id is None:
-            return None
-
-        # ── Rule 5: Skip top N favourites ──
-        if favourite_ids and selection_id in favourite_ids:
             return None
 
         # ── Rule 1: Odds Filter ──

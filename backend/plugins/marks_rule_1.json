@@ -113,13 +113,6 @@
       ]
     },
 
-    "rule_5_favourite_filter": {
-      "description": "Skip top N favourites in the market - laying favourites is higher risk as they win more often",
-      "enabled": true,
-      "skip_top_n": 2,
-      "rationale": "Favourites (lowest odds runners) win most often. Laying the 1st or 2nd favourite carries higher risk even when odds are in our target range."
-    },
-
     "rule_4_drift_filter": {
       "description": "Monitor odds drift between placement and match - significant shortening indicates informed money",
       "enabled": true,
@@ -171,7 +164,7 @@
     "bet_limits": {
       "max_bets_per_race": 1,
       "max_bets_per_meeting": null,
-      "max_concurrent_open_bets": null
+      "max_concurrent_open_bets": 10
     }
   },
 
