@@ -53,15 +53,10 @@ class Config:
     # WebSocket
     WS_HEARTBEAT_INTERVAL: int = 5  # seconds
 
-    # CORS origins
+    # CORS origins — set ALLOWED_ORIGINS env var as comma-separated list in Cloud Run
     CORS_ORIGINS: list = field(default_factory=lambda: [
-        "http://localhost:5173",
-        "http://localhost:3000",
-        "https://*.pages.dev",
-        "https://chimera-lay.pages.dev",
-        "https://lay3.thync.online",
-        "https://*.thync.online",
-    ])
+        o.strip() for o in os.getenv("ALLOWED_ORIGINS", "http://localhost:5173").split(",")
+    ] + ["http://localhost:5173", "http://localhost:3000", "https://*.pages.dev"])
 
     # Claude API (optional, for AI analysis)
     ANTHROPIC_API_KEY: Optional[str] = os.getenv("ANTHROPIC_API_KEY", None)
